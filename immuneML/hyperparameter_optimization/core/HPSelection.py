@@ -9,8 +9,10 @@ from immuneML.hyperparameter_optimization.states.HPSelectionState import HPSelec
 from immuneML.hyperparameter_optimization.states.TrainMLModelState import TrainMLModelState
 from immuneML.util.PathBuilder import PathBuilder
 from immuneML.workflows.instructions.MLProcess import MLProcess
+import ray
 
 
+@ray.remote
 class HPSelection:
 
     @staticmethod
@@ -35,12 +37,13 @@ class HPSelection:
                   f"(label {idx + 1} / {n_labels}).\n", flush=True)
 
             selection_state = HPSelectionState(train_datasets, val_datasets, path, state.hp_strategy)
-            state.assessment_states[split_index].label_states[label].selection_state = selection_state
+            print(state.assessment_states[0])
+            state.assessment_states[0].label_states[label].selection_state = selection_state
 
             hp_setting = selection_state.hp_strategy.generate_next_setting()
             while hp_setting is not None:
                 performance = HPSelection.evaluate_hp_setting(state, hp_setting, train_datasets, val_datasets,
-                                                              path, label, split_index)
+                                                              path, label, 0)
                 hp_setting = selection_state.hp_strategy.generate_next_setting(hp_setting, performance)
 
             HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)

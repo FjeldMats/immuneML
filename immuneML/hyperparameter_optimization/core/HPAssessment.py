@@ -12,20 +12,30 @@ from immuneML.ml_methods.MLMethod import MLMethod
 from immuneML.reports.ReportUtil import ReportUtil
 from immuneML.util.PathBuilder import PathBuilder
 from immuneML.workflows.instructions.MLProcess import MLProcess
+import ray
 
 
+@ray.remote
 class HPAssessment:
 
     @staticmethod
     def run_assessment(state: TrainMLModelState) -> TrainMLModelState:
 
         state = HPAssessment._create_root_path(state)
-        train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
+        train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path,
+                                                              state.label_configuration)
         n_splits = len(train_val_datasets)
 
-        for index in range(n_splits):
-            state = HPAssessment.run_assessment_split(state, train_val_datasets[index], test_datasets[index], index, n_splits)
+        ray.init(include_dashboard=True)
 
+        print("THIS IS NOT THE INSTALLED VERSION AHHHHH !!!!!!!")
+        print(n_splits)
+        states = []
+        for index in range(n_splits):
+            states.append(HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index],
+                                                             index, n_splits))
+        for s in states:
+            state = ray.get(s)
         return state
 
     @staticmethod
@@ -35,29 +45,41 @@ class HPAssessment:
         return state
 
     @staticmethod
+    @ray.remote
     def run_assessment_split(state, train_val_dataset, test_dataset, split_index: int, n_splits):
         """run inner CV loop (selection) and retrain on the full train_val_dataset after optimal model is chosen"""
 
-        print(f'{datetime.datetime.now()}: Training ML model: running outer CV loop: started split {split_index + 1}/{n_splits}.\n', flush=True)
+        print(
+            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: started split {split_index + 1}/{n_splits}.\n',
+            flush=True)
 
         current_path = HPAssessment.create_assessment_path(state, split_index)
 
-        assessment_state = HPAssessmentState(split_index, train_val_dataset, test_dataset, current_path, state.label_configuration)
+        assessment_state = HPAssessmentState(split_index, train_val_dataset, test_dataset, current_path,
+                                             state.label_configuration)
         state.assessment_states.append(assessment_state)
 
+        print("HOW MANY TIMES IS THIS RUNNING; PLS ANSWER ME")
         state = HPSelection.run_selection(state, train_val_dataset, current_path, split_index)
-        state = HPAssessment.run_assessment_split_per_label(state, split_index)
+        state = ray.get(HPAssessment.run_assessment_split_per_label.remote(state, split_index))
 
-        assessment_state.train_val_data_reports = ReportUtil.run_data_reports(train_val_dataset, state.assessment.reports.data_split_reports.values(),
-                                                                              current_path / "data_report_train", state.context)
-        assessment_state.test_data_reports = ReportUtil.run_data_reports(test_dataset, state.assessment.reports.data_split_reports.values(),
-                                                                         current_path / "data_report_test", state.context)
+        assessment_state.train_val_data_reports = ReportUtil.run_data_reports(train_val_dataset,
+                                                                              state.assessment.reports.data_split_reports.values(),
+                                                                              current_path / "data_report_train",
+                                                                              state.context)
+        assessment_state.test_data_reports = ReportUtil.run_data_reports(test_dataset,
+                                                                         state.assessment.reports.data_split_reports.values(),
+                                                                         current_path / "data_report_test",
+                                                                         state.context)
 
-        print(f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {split_index + 1}/{n_splits}.\n', flush=True)
+        print(
+            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {split_index + 1}/{n_splits}.\n',
+            flush=True)
 
         return state
 
     @staticmethod
+    @ray.remote
     def run_assessment_split_per_label(state: TrainMLModelState, split_index: int):
         """iterate through labels and hp_settings and retrain all models"""
         n_labels = state.label_configuration.get_label_count()
@@ -78,23 +100,30 @@ class HPAssessment:
 
                 train_val_dataset = state.assessment_states[split_index].train_val_dataset
                 test_dataset = state.assessment_states[split_index].test_dataset
-                state = HPAssessment.reeval_on_assessment_split(state, train_val_dataset, test_dataset, hp_setting, setting_path, label, split_index)
+                state = HPAssessment.reeval_on_assessment_split(state, train_val_dataset, test_dataset, hp_setting,
+                                                                setting_path, label, split_index)
 
-            print(f"{datetime.datetime.now()}: Training ML model: running the inner loop of nested CV: completed retraining models "
-                  f"for label {label} (label {idx + 1} / {n_labels}).\n", flush=True)
+            print(
+                f"{datetime.datetime.now()}: Training ML model: running the inner loop of nested CV: completed retraining models "
+                f"for label {label} (label {idx + 1} / {n_labels}).\n", flush=True)
 
         return state
 
     @staticmethod
-    def reeval_on_assessment_split(state, train_val_dataset: Dataset, test_dataset: Dataset, hp_setting: HPSetting, path: Path, label: str,
+    def reeval_on_assessment_split(state, train_val_dataset: Dataset, test_dataset: Dataset, hp_setting: HPSetting,
+                                   path: Path, label: str,
                                    split_index: int) -> MLMethod:
         """retrain model for specific label, assessment split and hp_setting"""
 
-        assessment_item = MLProcess(train_dataset=train_val_dataset, test_dataset=test_dataset, label=label, metrics=state.metrics,
-                                    optimization_metric=state.optimization_metric, path=path, hp_setting=hp_setting, report_context=state.context,
-                                    ml_reports=state.assessment.reports.model_reports.values(), number_of_processes=state.number_of_processes,
+        assessment_item = MLProcess(train_dataset=train_val_dataset, test_dataset=test_dataset, label=label,
+                                    metrics=state.metrics,
+                                    optimization_metric=state.optimization_metric, path=path, hp_setting=hp_setting,
+                                    report_context=state.context,
+                                    ml_reports=state.assessment.reports.model_reports.values(),
+                                    number_of_processes=state.number_of_processes,
                                     encoding_reports=state.assessment.reports.encoding_reports.values(),
-                                    label_config=LabelConfiguration([state.label_configuration.get_label_object(label)])) \
+                                    label_config=LabelConfiguration(
+                                        [state.label_configuration.get_label_object(label)])) \
             .run(split_index)
 
         state.assessment_states[split_index].label_states[label].assessment_items[str(hp_setting)] = assessment_item

@@ -18,6 +18,7 @@ from immuneML.util.ReflectionHandler import ReflectionHandler
 from immuneML.workflows.instructions.Instruction import Instruction
 from immuneML.workflows.instructions.MLProcess import MLProcess
 from scripts.specification_util import update_docs_per_mapping
+import ray
 
 
 class TrainMLModelInstruction(Instruction):
@@ -118,16 +119,19 @@ class TrainMLModelInstruction(Instruction):
 
     """
 
-    def __init__(self, dataset, hp_strategy: HPOptimizationStrategy, hp_settings: list, assessment: SplitConfig, selection: SplitConfig,
-                 metrics: set, optimization_metric: Metric, label_configuration: LabelConfiguration, path: Path = None, context: dict = None,
-                 number_of_processes: int = 1, reports: dict = None, name: str = None, refit_optimal_model: bool = False):
+    def __init__(self, dataset, hp_strategy: HPOptimizationStrategy, hp_settings: list, assessment: SplitConfig,
+                 selection: SplitConfig,
+                 metrics: set, optimization_metric: Metric, label_configuration: LabelConfiguration, path: Path = None,
+                 context: dict = None,
+                 number_of_processes: int = 1, reports: dict = None, name: str = None,
+                 refit_optimal_model: bool = False):
         self.state = TrainMLModelState(dataset, hp_strategy, hp_settings, assessment, selection, metrics,
                                        optimization_metric, label_configuration, path, context, number_of_processes,
                                        reports if reports is not None else {}, name, refit_optimal_model)
 
     def run(self, result_path: Path):
         self.state.path = result_path
-        self.state = HPAssessment.run_assessment(self.state)
+        self.state = ray.get(HPAssessment.run_assessment(self.state))
         self._compute_optimal_hp_item_per_label()
         self.state.report_results = HPUtil.run_hyperparameter_reports(self.state, self.state.path / "reports")
         self.print_performances(self.state)
@@ -139,58 +143,74 @@ class TrainMLModelInstruction(Instruction):
 
         for idx, label in enumerate(self.state.label_configuration.get_labels_by_name()):
             self._compute_optimal_item(label, f"(label {idx + 1} / {n_labels})")
-            zip_path = MLExporter.export_zip(hp_item=self.state.optimal_hp_items[label], path=self.state.path / f"optimal_{label}", label=label)
+            zip_path = MLExporter.export_zip(hp_item=self.state.optimal_hp_items[label],
+                                             path=self.state.path / f"optimal_{label}", label=label)
             self.state.optimal_hp_item_paths[label] = zip_path
 
     def _compute_optimal_item(self, label: str, index_repr: str):
         optimal_hp_settings = [state.label_states[label].optimal_hp_setting for state in self.state.assessment_states]
         optimal_hp_setting = Counter(optimal_hp_settings).most_common(1)[0][0]
         if self.state.refit_optimal_model:
-            print(f"{datetime.datetime.now()}: TrainMLModel: retraining optimal model for label {label} {index_repr}.\n", flush=True)
-            self.state.optimal_hp_items[label] = MLProcess(self.state.dataset, None, label, self.state.metrics, self.state.optimization_metric,
-                                                           self.state.path / f"optimal_{label}", number_of_processes=self.state.number_of_processes,
-                                                           label_config=self.state.label_configuration, hp_setting=optimal_hp_setting).run(0)
-            print(f"{datetime.datetime.now()}: TrainMLModel: finished retraining optimal model for label {label} {index_repr}.\n", flush=True)
+            print(
+                f"{datetime.datetime.now()}: TrainMLModel: retraining optimal model for label {label} {index_repr}.\n",
+                flush=True)
+            self.state.optimal_hp_items[label] = MLProcess(self.state.dataset, None, label, self.state.metrics,
+                                                           self.state.optimization_metric,
+                                                           self.state.path / f"optimal_{label}",
+                                                           number_of_processes=self.state.number_of_processes,
+                                                           label_config=self.state.label_configuration,
+                                                           hp_setting=optimal_hp_setting).run(0)
+            print(
+                f"{datetime.datetime.now()}: TrainMLModel: finished retraining optimal model for label {label} {index_repr}.\n",
+                flush=True)
 
         else:
             optimal_assessment_state = self.state.assessment_states[optimal_hp_settings.index(optimal_hp_setting)]
             self.state.optimal_hp_items[label] = optimal_assessment_state.label_states[label].optimal_assessment_item
 
     def print_performances(self, state: TrainMLModelState):
-        print(f"Performances ({state.optimization_metric.name.lower()}) -----------------------------------------------", flush=True)
+        print(
+            f"Performances ({state.optimization_metric.name.lower()}) -----------------------------------------------",
+            flush=True)
 
         for label in state.label_configuration.get_labels_by_name():
             print(f"\n\nLabel: {label}", flush=True)
             print(f"Performance ({state.optimization_metric.name.lower()}) per assessment split:", flush=True)
             for split in range(state.assessment.split_count):
-                print(f"Split {split+1}: {state.assessment_states[split].label_states[label].optimal_assessment_item.performance[state.optimization_metric.name.lower()]}", flush=True)
+                print(
+                    f"Split {split + 1}: {state.assessment_states[split].label_states[label].optimal_assessment_item.performance[state.optimization_metric.name.lower()]}",
+                    flush=True)
             print(f"Average performance ({state.optimization_metric.name.lower()}): "
-                  f"{sum([state.assessment_states[split].label_states[label].optimal_assessment_item.performance[state.optimization_metric.name.lower()] for split in range(state.assessment.split_count)])/state.assessment.split_count}", flush=True)
+                  f"{sum([state.assessment_states[split].label_states[label].optimal_assessment_item.performance[state.optimization_metric.name.lower()] for split in range(state.assessment.split_count)]) / state.assessment.split_count}",
+                  flush=True)
             print("------------------------------", flush=True)
 
     def _export_all_performances_to_csv(self):
         self._export_optimal_performances_to_csv()
         self._export_assessment_performances_to_csv()
-        if not (self.state.selection.training_percentage == 1 and self.state.selection.split_strategy == SplitType.RANDOM):
+        if not (
+                self.state.selection.training_percentage == 1 and self.state.selection.split_strategy == SplitType.RANDOM):
             self._export_selection_performance_to_csv()
 
     def _export_optimal_performances_to_csv(self):
         for label in self.state.label_configuration.get_labels_by_name():
             performance = {"hp_setting": [], "split": [], **{metric.name.lower(): [] for metric in self.state.metrics}}
             for index, assessment_state in enumerate(self.state.assessment_states):
-                performance['split'].append(index+1)
+                performance['split'].append(index + 1)
                 performance['hp_setting'].append(assessment_state.label_states[label].optimal_hp_setting.get_key())
                 for metric in self.state.metrics:
-                    performance[metric.name.lower()].append(assessment_state.label_states[label].optimal_assessment_item.performance[metric.name.lower()])
+                    performance[metric.name.lower()].append(
+                        assessment_state.label_states[label].optimal_assessment_item.performance[metric.name.lower()])
             pd.DataFrame(performance).to_csv(self.state.path / f"{label}_optimal_models_performance.csv", index=False)
 
     def _export_assessment_performances_to_csv(self):
         for label in self.state.label_configuration.get_labels_by_name():
-            performance = {'hp_setting': [], 'split': [], 'optimal': [], **{metric.name.lower(): [] for metric in self.state.metrics}}
+            performance = {'hp_setting': [], 'split': [], 'optimal': [],
+                           **{metric.name.lower(): [] for metric in self.state.metrics}}
             for index, assessment_state in enumerate(self.state.assessment_states):
                 for hp_setting, hp_item in assessment_state.label_states[label].assessment_items.items():
                     performance['hp_setting'].append(str(hp_setting))
-                    performance['split'].append(index+1)
+                    performance['split'].append(index + 1)
                     performance['optimal'].append(hp_setting == assessment_state.label_states[label].optimal_hp_setting)
                     for metric in self.state.metrics:
                         performance[metric.name.lower()].append(hp_item.performance[metric.name.lower()])
@@ -200,21 +220,24 @@ class TrainMLModelInstruction(Instruction):
         for label in self.state.label_configuration.get_labels_by_name():
             for index, assessment_state in enumerate(self.state.assessment_states):
                 selection_state = assessment_state.label_states[label].selection_state
-                performance = {'hp_setting': [], 'split': [], **{metric.name.lower(): [] for metric in self.state.metrics}}
+                performance = {'hp_setting': [], 'split': [],
+                               **{metric.name.lower(): [] for metric in self.state.metrics}}
                 for hp_setting, hp_item_list in selection_state.hp_items.items():
                     for i, hp_item in enumerate(hp_item_list):
                         performance['hp_setting'].append(hp_setting)
-                        performance['split'].append(i+1)
+                        performance['split'].append(i + 1)
                         for metric in self.state.metrics:
                             performance[metric.name.lower()].append(hp_item.performance[metric.name.lower()])
-                pd.DataFrame(performance).to_csv(self.state.path / f"{label}_assessment_split_{index+1}_selection_performance.csv", index=False)
+                pd.DataFrame(performance).to_csv(
+                    self.state.path / f"{label}_assessment_split_{index + 1}_selection_performance.csv", index=False)
 
     @staticmethod
     def get_documentation():
         doc = str(TrainMLModelInstruction.__doc__)
         valid_values = str([metric.name.lower() for metric in Metric])[1:-1].replace("'", "`")
         valid_strategies = str(ReflectionHandler.all_nonabstract_subclass_basic_names(HPOptimizationStrategy, "",
-                                                                                      "hyperparameter_optimization/strategy/"))[1:-1]\
+                                                                                      "hyperparameter_optimization/strategy/"))[
+                           1:-1] \
             .replace("'", "`")
         mapping = {
             "dataset (Dataset)": "dataset",
