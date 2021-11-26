@@ -28,15 +28,16 @@ class HPAssessment:
 
         ray.init(include_dashboard=True)
 
-        print("THIS IS NOT THE INSTALLED VERSION AHHHHH !!!!!!!")
-        print(n_splits)
-        states = []
+        state = HPAssessment._create_root_path(state)
+        train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
+        n_splits = len(train_val_datasets)
+
+        ### split into n ray tasks
         for index in range(n_splits):
-            states.append(HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index],
-                                                             index, n_splits))
-        for s in states:
-            state = ray.get(s)
-        return state
+            state = HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], index, n_splits)
+
+        ### combine every state into a single state (last state)
+        return ray.get(state)
 
     @staticmethod
     def _create_root_path(state: TrainMLModelState) -> TrainMLModelState:
@@ -57,9 +58,10 @@ class HPAssessment:
 
         assessment_state = HPAssessmentState(split_index, train_val_dataset, test_dataset, current_path,
                                              state.label_configuration)
-        state.assessment_states.append(assessment_state)
 
-        print("HOW MANY TIMES IS THIS RUNNING; PLS ANSWER ME")
+        # going to cause issues? 
+        state.assessment_states.append(assessment_state) 
+
         state = HPSelection.run_selection(state, train_val_dataset, current_path, split_index)
         state = ray.get(HPAssessment.run_assessment_split_per_label.remote(state, split_index))
 

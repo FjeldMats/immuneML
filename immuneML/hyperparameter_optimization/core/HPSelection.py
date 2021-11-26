@@ -30,6 +30,8 @@ class HPSelection:
         train_datasets, val_datasets = HPUtil.split_data(train_val_dataset, state.selection, path, state.label_configuration)
 
         n_labels = state.label_configuration.get_label_count()
+        
+        states = []
 
         for idx, label in enumerate(state.label_configuration.get_labels_by_name()):
 
@@ -37,8 +39,7 @@ class HPSelection:
                   f"(label {idx + 1} / {n_labels}).\n", flush=True)
 
             selection_state = HPSelectionState(train_datasets, val_datasets, path, state.hp_strategy)
-            print(state.assessment_states[0])
-            state.assessment_states[0].label_states[label].selection_state = selection_state
+            state.assessment_states[split_index].label_states[label].selection_state = selection_state
 
             hp_setting = selection_state.hp_strategy.generate_next_setting()
             while hp_setting is not None:

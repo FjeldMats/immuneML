@@ -131,7 +131,7 @@ class TrainMLModelInstruction(Instruction):
 
     def run(self, result_path: Path):
         self.state.path = result_path
-        self.state = ray.get(HPAssessment.run_assessment(self.state))
+        self.state = HPAssessment.run_assessment(self.state)
         self._compute_optimal_hp_item_per_label()
         self.state.report_results = HPUtil.run_hyperparameter_reports(self.state, self.state.path / "reports")
         self.print_performances(self.state)
