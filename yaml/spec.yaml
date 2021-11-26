@@ -1,0 +1,44 @@
+definitions:
+  datasets:
+    dataset: # user-defined dataset name
+      format: ImmuneML # the default format used by the 'Create dataset' galaxy tool is ImmuneML
+      params:
+        path: /home/mats/ImmuneData/my_dataset_export_instruction/my_dataset/ImmuneML/my_dataset.iml_dataset
+
+  ml_methods:
+    my_log_reg: LogisticRegression
+    my_svm: SVM
+
+  encodings:
+    my_3mer_encoding: # user-defined encoding name
+      KmerFrequency:
+        k: 3
+
+  reports:
+    my_benchmark: MLSettingsPerformance
+
+instructions:
+  my_training_instruction: # user-defined instruction name
+    type: TrainMLModel
+
+    dataset: dataset # select the dataset defined above
+    labels:
+      - HLA
+
+    settings:
+      - encoding: my_3mer_encoding
+        ml_method: my_log_reg
+      #- encoding: my_3mer_encoding
+      #  ml_method: my_svm
+
+    assessment: # parameters in the assessment (outer) cross-validation loop
+      split_count: 2
+      split_strategy: random
+      training_percentage: 0.7
+    selection:
+      split_strategy: k_fold
+      split_count: 2
+
+    optimization_metric: balanced_accuracy # the metric to optimize during nested cross-validation
+    strategy: GridSearch # strategy for hyperparameter optimization, GridSearch is currently the only available option
+    number_of_processes: 8 # processes for parallelization

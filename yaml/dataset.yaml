@@ -1,0 +1,20 @@
+definitions:
+  datasets:
+    my_dataset:
+      format: RandomRepertoireDataset
+      params:
+        labels:
+          HLA:
+            A: 0.9
+            B: 0.1
+        repertoire_count: 250
+        sequence_count_probabilities:
+          1000: 0.5
+          1200: 0.5
+        sequence_length_probabilities:
+          100: 1.0
+instructions:
+  my_dataset_export_instruction:
+    type: DatasetExport
+    datasets: [my_dataset] # list of datasets to export
+    export_formats: [ImmuneML] # list of formats to export the datasets to.
