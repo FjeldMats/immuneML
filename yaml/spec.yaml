@@ -3,7 +3,7 @@ definitions:
     dataset: # user-defined dataset name
       format: ImmuneML # the default format used by the 'Create dataset' galaxy tool is ImmuneML
       params:
-        path: /home/mats/ImmuneData/my_dataset_export_instruction/my_dataset/ImmuneML/my_dataset.iml_dataset
+        path: /home/ubuntu/ImmuneData/my_dataset_export_instruction/my_dataset/ImmuneML/my_dataset.iml_dataset
 
   ml_methods:
     my_log_reg: LogisticRegression
