@@ -26,7 +26,7 @@ class HPAssessment:
                                                               state.label_configuration)
         n_splits = len(train_val_datasets)
 
-        ray.init(include_dashboard=True)
+        ray.init(address='auto')
 
         state = HPAssessment._create_root_path(state)
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
