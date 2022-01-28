@@ -41,4 +41,4 @@ instructions:
 
     optimization_metric: balanced_accuracy # the metric to optimize during nested cross-validation
     strategy: GridSearch # strategy for hyperparameter optimization, GridSearch is currently the only available option
-    number_of_processes: 8 # processes for parallelization
+    number_of_processes: 4 # processes for parallelization
