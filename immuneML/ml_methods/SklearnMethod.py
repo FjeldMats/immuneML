@@ -7,9 +7,14 @@ import dill
 import numpy as np
 import pkg_resources
 import yaml
+import ray
 from sklearn.metrics import SCORERS
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.utils.validation import check_is_fitted
+
+
+import joblib
+from ray.util.joblib import register_ray
 
 from immuneML.data_model.encoded_data.EncodedData import EncodedData
 from immuneML.ml_methods.MLMethod import MLMethod
@@ -71,6 +76,7 @@ class SklearnMethod(MLMethod):
     def __init__(self, parameter_grid: dict = None, parameters: dict = None):
         super(SklearnMethod, self).__init__()
         self.model = None
+        register_ray()
 
         if parameter_grid is not None and "show_warnings" in parameter_grid:
             self.show_warnings = parameter_grid.pop("show_warnings")[0]
@@ -154,9 +160,11 @@ class SklearnMethod(MLMethod):
             warnings.simplefilter("ignore")
             os.environ["PYTHONWARNINGS"] = "ignore"
 
+
         self.model = RandomizedSearchCV(model, param_distributions=self._parameter_grid, cv=number_of_splits, n_jobs=cores_for_training,
                                         scoring=scoring, refit=True)
-        self.model.fit(X, y)
+        with joblib.parallel_backend('ray'):
+            self.model.fit(X, y)
 
         if not self.show_warnings:
             del os.environ["PYTHONWARNINGS"]
@@ -253,33 +261,33 @@ class SklearnMethod(MLMethod):
     @staticmethod
     def get_usage_documentation(model_name):
         return f"""
-    
-    Scikit-learn models can be trained in two modes: 
-    
+
+    Scikit-learn models can be trained in two modes:
+
     1. Creating a model using a given set of hyperparameters, and relying on the selection and assessment loop in the
-    TrainMLModel instruction to select the optimal model. 
-    
-    2. Passing a range of different hyperparameters to {model_name}, and using a third layer of nested cross-validation 
-    to find the optimal hyperparameters through grid search. In this case, only the {model_name} model with the optimal 
-    hyperparameter settings is further used in the inner selection loop of the TrainMLModel instruction. 
-    
-    By default, mode 1 is used. In order to use mode 2, model_selection_cv and model_selection_n_folds must be set. 
-    
-    
+    TrainMLModel instruction to select the optimal model.
+
+    2. Passing a range of different hyperparameters to {model_name}, and using a third layer of nested cross-validation
+    to find the optimal hyperparameters through grid search. In this case, only the {model_name} model with the optimal
+    hyperparameter settings is further used in the inner selection loop of the TrainMLModel instruction.
+
+    By default, mode 1 is used. In order to use mode 2, model_selection_cv and model_selection_n_folds must be set.
+
+
     Arguments:
 
         {model_name} (dict): Under this key, hyperparameters can be specified that will be passed to the scikit-learn class.
         Any scikit-learn hyperparameters can be specified here. In mode 1, a single value must be specified for each of the scikit-learn
         hyperparameters. In mode 2, it is possible to specify a range of different hyperparameters values in a list. It is also allowed
         to mix lists and single values in mode 2, in which case the grid search will only be done for the lists, while the
-        single-value hyperparameters will be fixed. 
+        single-value hyperparameters will be fixed.
         In addition to the scikit-learn hyperparameters, parameter show_warnings (True/False) can be specified here. This determines
         whether scikit-learn warnings, such as convergence warnings, should be printed. By default show_warnings is True.
-        
-        model_selection_cv (bool): If any of the hyperparameters under {model_name} is a list and model_selection_cv is True, 
+
+        model_selection_cv (bool): If any of the hyperparameters under {model_name} is a list and model_selection_cv is True,
         a grid search will be done over the given hyperparameters, using the number of folds specified in model_selection_n_folds.
-        By default, model_selection_cv is False. 
-        
+        By default, model_selection_cv is False.
+
         model_selection_n_folds (int): The number of folds that should be used for the cross validation grid search if model_selection_cv is True.
-        
+
         """

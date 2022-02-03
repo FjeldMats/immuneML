@@ -26,14 +26,13 @@ class HPAssessment:
                                                               state.label_configuration)
         n_splits = len(train_val_datasets)
 
-        ray.init(include_dashboard=True)
-
         state = HPAssessment._create_root_path(state)
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
         n_splits = len(train_val_datasets)
 
         ### split into n ray tasks
         for index in range(n_splits):
+            print(f"split {index}")
             state = HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], index, n_splits)
 
         ### combine every state into a single state (last state)
@@ -59,8 +58,8 @@ class HPAssessment:
         assessment_state = HPAssessmentState(split_index, train_val_dataset, test_dataset, current_path,
                                              state.label_configuration)
 
-        # going to cause issues? 
-        state.assessment_states.append(assessment_state) 
+        # going to cause issues?
+        state.assessment_states.append(assessment_state)
 
         state = HPSelection.run_selection(state, train_val_dataset, current_path, split_index)
         state = ray.get(HPAssessment.run_assessment_split_per_label.remote(state, split_index))

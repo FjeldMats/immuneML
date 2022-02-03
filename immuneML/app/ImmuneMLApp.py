@@ -5,6 +5,7 @@ import os
 import shutil
 import warnings
 from pathlib import Path
+import ray
 
 from immuneML.caching.CacheType import CacheType
 from immuneML.dsl.ImmuneMLParser import ImmuneMLParser
@@ -38,6 +39,7 @@ class ImmuneMLApp:
     def run(self):
 
         self.set_cache()
+        ray.init(address='auto')
 
         print(f"{datetime.datetime.now()}: ImmuneML: parsing the specification...\n", flush=True)
 

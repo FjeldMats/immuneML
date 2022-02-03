@@ -3,7 +3,7 @@ definitions:
     dataset: # user-defined dataset name
       format: ImmuneML # the default format used by the 'Create dataset' galaxy tool is ImmuneML
       params:
-        path: /home/mats/ImmuneData/my_dataset_export_instruction/my_dataset/ImmuneML/my_dataset.iml_dataset
+        path: ImmuneData/my_dataset_export_instruction/my_dataset/ImmuneML/my_dataset.iml_dataset
 
   ml_methods:
     my_log_reg: LogisticRegression
@@ -41,4 +41,4 @@ instructions:
 
     optimization_metric: balanced_accuracy # the metric to optimize during nested cross-validation
     strategy: GridSearch # strategy for hyperparameter optimization, GridSearch is currently the only available option
-    number_of_processes: 8 # processes for parallelization
+    number_of_processes: 4 # processes for parallelization
