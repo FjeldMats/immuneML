@@ -1,5 +1,5 @@
 from collections import Counter
-from multiprocessing.pool import Pool
+from ray.util.multiprocessing import Pool
 
 from immuneML.caching.CacheHandler import CacheHandler
 from immuneML.caching.CacheObjectType import CacheObjectType
