@@ -39,3 +39,7 @@ venv/
 # temporary files and folders
 tmp/
 .vscode/settings.json
+
+cache
+ImmuneData
+results

@@ -1,5 +1,6 @@
 import datetime
 from pathlib import Path
+from typing import List
 
 from immuneML.data_model.dataset.Dataset import Dataset
 from immuneML.environment.LabelConfiguration import LabelConfiguration
@@ -19,9 +20,23 @@ import ray
 class HPAssessment:
 
     @staticmethod
+    def _combine_states(states: List[TrainMLModelState]) -> TrainMLModelState:
+        combined_state = states[0]
+
+        for state in states[1:]:
+            combined_state.hp_settings.extend(state.hp_settings)
+            combined_state.reports.update(state.reports)
+            combined_state.optimal_hp_items.update(state.optimal_hp_items)
+            combined_state.optimal_hp_item_paths.update(state.optimal_hp_item_paths)
+            combined_state.assessment_states.extend(state.assessment_states)
+            combined_state.report_results.extend(state.report_results)
+
+        return combined_state
+
+    @staticmethod
     def run_assessment(state: TrainMLModelState) -> TrainMLModelState:
 
-        state = HPAssessment._create_root_path(state)
+        tate = HPAssessment._create_root_path(state)
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path,
                                                               state.label_configuration)
         n_splits = len(train_val_datasets)
@@ -30,13 +45,19 @@ class HPAssessment:
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
         n_splits = len(train_val_datasets)
 
+        states = []
+
         ### split into n ray tasks
         for index in range(n_splits):
-            print(f"split {index}")
-            state = HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], index, n_splits)
+            states.append(HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], 0, index))
+
+        states = ray.get(states)
 
         ### combine every state into a single state (last state)
-        return ray.get(state)
+        combined_state = HPAssessment._combine_states(states)
+        return combined_state
+
+
 
     @staticmethod
     def _create_root_path(state: TrainMLModelState) -> TrainMLModelState:
