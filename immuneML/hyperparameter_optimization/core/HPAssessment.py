@@ -63,6 +63,7 @@ class HPAssessment:
         return combined_state
 
 
+        return state
 
     @staticmethod
     def _create_root_path(state: TrainMLModelState) -> TrainMLModelState:
@@ -133,7 +134,6 @@ class HPAssessment:
         return state
 
     @staticmethod
-
     def reeval_on_assessment_split(state, train_val_dataset: Dataset, test_dataset: Dataset, hp_setting: HPSetting, path: Path, label: Label,
                                    split_index: int) -> MLMethod:
         """retrain model for specific label, assessment split and hp_setting"""
