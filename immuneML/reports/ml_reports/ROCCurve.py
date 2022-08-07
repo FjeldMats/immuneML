@@ -8,6 +8,7 @@ from immuneML.reports.ReportOutput import ReportOutput
 from immuneML.reports.ReportResult import ReportResult
 from immuneML.reports.ml_reports.MLReport import MLReport
 from immuneML.util.PathBuilder import PathBuilder
+from immuneML.ml_methods.util.Util import Util
 
 
 class ROCCurve(MLReport):
@@ -25,9 +26,6 @@ class ROCCurve(MLReport):
 
     """
 
-    def __init__(self, name: str = None):
-        super().__init__(name=name)
-
     @classmethod
     def build_object(cls, **kwargs):
         name = kwargs["name"] if "name" in kwargs else "ROC_curve"
@@ -35,8 +33,18 @@ class ROCCurve(MLReport):
 
     def _generate(self) -> ReportResult:
         x = self.test_dataset.encoded_data
-        y_score = self.method.predict_proba(x, self.label)[self.label]
-        fpr, tpr, _ = roc_curve(x.labels[self.label], y_score[:, 0])
+
+        if self.method.can_predict_proba():
+            y_score = self.method.predict_proba(x, self.label)[self.label.name]
+            predicted_y = y_score[:, 0]
+        else:
+            predicted_y = self.method.predict(x, self.label)[self.label.name]
+            predicted_y = Util.map_to_new_class_values(predicted_y, self.method.get_class_mapping())
+
+        true_y = x.labels[self.label.name]
+        true_y = Util.map_to_new_class_values(true_y, self.method.get_class_mapping())
+
+        fpr, tpr, _ = roc_curve(true_y, predicted_y)
         roc_auc = auc(fpr, tpr)
 
         trace1 = go.Scatter(x=fpr, y=tpr,
@@ -60,6 +68,7 @@ class ROCCurve(MLReport):
         fig.write_html(str(path_htm))
         np.savetxt(str(path_csv), csv_result, header="fpr,tpr")
         return ReportResult(self.name,
+                            info="A report that plots the ROC curve for a binary classifier.",
                             output_figures=[ReportOutput(path_htm)],
                             output_tables=[ReportOutput(path_csv)])
 

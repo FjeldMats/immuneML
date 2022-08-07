@@ -7,7 +7,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib_venn import venn2
 
-from immuneML.encodings.filtered_sequence_encoding.SequenceAbundanceEncoder import SequenceAbundanceEncoder
+from immuneML.encodings.abundance_encoding.CompAIRRSequenceAbundanceEncoder import CompAIRRSequenceAbundanceEncoder
+from immuneML.encodings.abundance_encoding.KmerAbundanceEncoder import KmerAbundanceEncoder
+from immuneML.encodings.abundance_encoding.SequenceAbundanceEncoder import SequenceAbundanceEncoder
+from immuneML.environment.Label import Label
 from immuneML.hyperparameter_optimization.states.TrainMLModelState import TrainMLModelState
 from immuneML.reports.ReportOutput import ReportOutput
 from immuneML.reports.ReportResult import ReportResult
@@ -18,8 +21,11 @@ from immuneML.util.PathBuilder import PathBuilder
 
 class ReferenceSequenceOverlap(TrainMLModelReport):
     """
-    The ReferenceSequenceOverlap report compares a list of disease-associated sequences produced by the :ref:`SequenceAbundance` encoder to
-    a list of reference receptor sequences. It outputs a Venn diagram and a list of receptor sequences found both in the encoder and reference.
+    The ReferenceSequenceOverlap report compares a list of disease-associated sequences (or k-mers) produced by the
+    :py:obj:`~immuneML.encodings.abundance_encoding.SequenceAbundanceEncoder.SequenceAbundanceEncoder`,
+    :py:obj:`~immuneML.encodings.abundance_encoding.CompAIRRSequenceAbundanceEncoder.CompAIRRSequenceAbundanceEncoder` or
+    :py:obj:`~immuneML.encodings.abundance_encoding.KmerAbundanceEncoder.KmerAbundanceEncoder` to
+    a list of reference sequences. It outputs a Venn diagram and a list of sequences found both in the encoder and reference list.
 
     The report compares the sequences by their sequence content and the additional comparison_attributes (such as V or J gene), as specified by the user.
 
@@ -31,7 +37,7 @@ class ReferenceSequenceOverlap(TrainMLModelReport):
         comparison_attributes (list): list of attributes to use for comparison; all of them have to be present in the reference file where they should
         be the names of the columns
 
-        label (str): name of the label for which the reference sequences should be compared to the model; if none, it takes the one label from the
+        label (str): name of the label for which the reference sequences/k-mers should be compared to the model; if none, it takes the one label from the
         instruction; if it is none and multiple labels were specified for the instruction, the report will not be generated
 
     YAML specification:
@@ -42,11 +48,16 @@ class ReferenceSequenceOverlap(TrainMLModelReport):
         reports: # the report is defined with all other reports under definitions/reports
             my_reference_overlap_report:
                 ReferenceSequenceOverlap:
-                    reference_path: reference.csv # a reference file with columns listed under comparison_attributes
+                    reference_path: reference_sequences.csv  # example usage with SequenceAbundanceEncoder or CompAIRRSequenceAbundanceEncoder
                     comparison_attributes:
                         - sequence_aas
                         - v_genes
                         - j_genes
+            my_reference_overlap_report_with_kmers:
+                ReferenceSequenceOverlap:
+                    reference_path: reference_kmers.csv  # example usage with KmerAbundanceEncoder
+                    comparison_attributes:
+                        - k-mer
 
     """
 
@@ -71,13 +82,10 @@ class ReferenceSequenceOverlap(TrainMLModelReport):
         return ReferenceSequenceOverlap(**kwargs)
 
     def __init__(self, reference_path: Path = None, comparison_attributes: list = None, name: str = None, state: TrainMLModelState = None,
-                 result_path: Path = None, label: str = None):
-        super().__init__(name)
+                 result_path: Path = None, label: Label = None, number_of_processes: int = 1):
+        super().__init__(name=name, state=state, label=label, result_path=result_path, number_of_processes=number_of_processes)
         self.reference_path = reference_path
         self.comparison_attributes = comparison_attributes
-        self.state = state
-        self.result_path = result_path
-        self.label = label
 
     def _generate(self) -> ReportResult:
 
@@ -85,27 +93,29 @@ class ReferenceSequenceOverlap(TrainMLModelReport):
 
         PathBuilder.build(self.result_path)
 
-        if ReferenceSequenceOverlap._check_encoder_class(self.state.optimal_hp_items[self.label].encoder):
+        if ReferenceSequenceOverlap._check_encoder_class(self.state.optimal_hp_items[self.label.name].encoder):
             figure, data = self._compute_optimal_model_overlap()
             figures.append(figure)
             tables.append(data)
 
         for assessment_state in self.state.assessment_states:
-            encoder = assessment_state.label_states[self.label].optimal_assessment_item.encoder
+            encoder = assessment_state.label_states[self.label.name].optimal_assessment_item.encoder
             if ReferenceSequenceOverlap._check_encoder_class(encoder):
-                figure_filename = self.result_path / f"assessment_split_{assessment_state.split_index + 1}_model_vs_reference_overlap_{self.label}.pdf"
-                df_filename = self.result_path / f"assessment_split_{assessment_state.split_index + 1}_overlap_sequences_{self.label}"
+                figure_filename = self.result_path / f"assessment_split_{assessment_state.split_index + 1}_model_vs_reference_overlap_{self.label.name}.pdf"
+                df_filename = self.result_path / f"assessment_split_{assessment_state.split_index + 1}_overlap_sequences_{self.label.name}"
                 figure, data = self._compute_model_overlap(figure_filename, df_filename, encoder,
                                                            f"overlap sequences between the model for assessment split "
                                                            f"{assessment_state.split_index + 1} and reference list")
                 figures.append(figure)
                 tables.append(data)
 
-        return ReportResult(self.name, output_figures=figures, output_tables=tables)
+        return ReportResult(self.name,
+                            info="A Venn diagram between the list of disease-associated sequences produced by the SequenceAbundance encoder and a list of reference receptor sequences, and a file containing the overlapping sequences.",
+                            output_figures=figures, output_tables=tables)
 
     @staticmethod
     def _check_encoder_class(encoder):
-        return any(isinstance(encoder, cls) for cls in [SequenceAbundanceEncoder])
+        return any(isinstance(encoder, cls) for cls in [SequenceAbundanceEncoder, CompAIRRSequenceAbundanceEncoder, KmerAbundanceEncoder])
 
     def check_prerequisites(self):
 
@@ -120,18 +130,18 @@ class ReferenceSequenceOverlap(TrainMLModelReport):
                                 f"report...")
                 valid = False
             else:
-                self.label = self.state.label_configuration.get_labels_by_name()[0]
+                self.label = self.state.label_configuration.get_label_objects()[0]
 
         return valid
 
     def _compute_optimal_model_overlap(self) -> Tuple[ReportOutput, ReportOutput]:
 
-        filename = self.result_path / f"optimal_model_vs_reference_overlap_{self.label}.pdf"
-        df_filename = self.result_path / f"overlap_sequences_{self.label}.csv"
-        encoder = self.state.optimal_hp_items[self.label].encoder
+        filename = self.result_path / f"optimal_model_vs_reference_overlap_{self.label.name}.pdf"
+        df_filename = self.result_path / f"overlap_sequences_{self.label.name}.csv"
+        encoder = self.state.optimal_hp_items[self.label.name].encoder
 
         return self._compute_model_overlap(filename, df_filename, encoder,
-                                           f"overlap sequences between the reference and the optimal model for label {self.label}")
+                                           f"overlap sequences between the reference and the optimal model for label {self.label.name}")
 
     def _compute_model_overlap(self, figure_filename, df_filename, encoder, name):
 
@@ -156,7 +166,7 @@ class ReferenceSequenceOverlap(TrainMLModelReport):
 
     def _extract_from_model(self, encoder):
 
-        model_sequences_df = pd.read_csv(getattr(encoder, "relevant_sequence_csv_path"))
+        model_sequences_df = pd.read_csv(getattr(encoder, "relevant_sequence_path"))
         model_attributes = model_sequences_df.columns.tolist()
         assert all(attribute in self.comparison_attributes for attribute in model_attributes), \
             f"{ReferenceSequenceOverlap.__name__}: comparison attributes from the report {self.name} ({self.comparison_attributes}) and from the optimal " \

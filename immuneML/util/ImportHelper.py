@@ -80,7 +80,7 @@ class ImportHelper:
         """
 
         try:
-            metadata = pd.read_csv(params.metadata_file, ",")
+            metadata = pd.read_csv(params.metadata_file, sep=",")
         except Exception as e:
             raise Exception(f"{e}\nAn error occurred while reading in the metadata file {params.metadata_file}. Please see the error log above for "
                             f"more details on this error and the documentation for the expected format of the metadata.")
@@ -212,8 +212,12 @@ class ImportHelper:
                 df = pd.read_csv(filepath, sep=params.separator, iterator=False, usecols=params.columns_to_load, dtype=str)
             except ValueError:
                 df = pd.read_csv(filepath, sep=params.separator, iterator=False, dtype=str)
-                warnings.warn(f"ImportHelper: failed to import columns {params.columns_to_load} for "
-                              f"the input file {filepath}, imported the following instead: {list(df.columns)}")
+
+                expected = [e for e in params.columns_to_load if e not in list(df.columns)]
+
+                warnings.warn(f"ImportHelper: expected to find the following column(s) in the input file '{filepath.name}', which were not found: {expected}."
+                              f"The following columns were imported instead: {list(df.columns)}. \nTo remove this warning, add the relevant columns "
+                              f"to the input file, or change which columns are imported under 'datasets/<dataset_key>/params/columns_to_load' and 'datasets/<dataset_key>/params/column_mapping'.")
 
         return df
 
@@ -256,7 +260,7 @@ class ImportHelper:
                         f"{ImportHelper.__name__}: {n_empty} sequences were removed from the dataset because they contained an empty {sequence_name} "
                         f"sequence after preprocessing. ")
             else:
-                raise ValueError(f"{ImportHelper.__name__}: column {sequence_colname} was not set, but is required for filtering.")
+                warnings.warn(f"{ImportHelper.__name__}: column {sequence_colname} was not set, but is required for filtering. Skipping this filtering...")
 
         return dataframe
 
@@ -317,7 +321,8 @@ class ImportHelper:
     def get_chain_for_row(row):
         for col in ["v_subgroup", "j_subgroup", "v_genes", "j_genes", "v_alleles", "j_alleles"]:
             if col in row and row[col] is not None:
-                return Chain.get_chain(str(row[col])[0:3]).value
+                chain = Chain.get_chain(str(row[col])[0:3])
+                return chain.value if chain is not None else None
         return None
 
     @staticmethod

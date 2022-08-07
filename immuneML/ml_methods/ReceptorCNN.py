@@ -11,6 +11,7 @@ from torch import nn
 
 from immuneML.data_model.encoded_data.EncodedData import EncodedData
 from immuneML.environment.EnvironmentSettings import EnvironmentSettings
+from immuneML.environment.Label import Label
 from immuneML.environment.SequenceType import SequenceType
 from immuneML.ml_methods.MLMethod import MLMethod
 from immuneML.ml_methods.pytorch_implementations.PyTorchReceptorCNN import PyTorchReceptorCNN as RCNN
@@ -28,7 +29,7 @@ class ReceptorCNN(MLMethod):
 
         The architecture of the CNN for paired-chain receptor data
 
-    Requires one-hot encoded data as input (as produced by :ref:`OneHot` encoder).
+    Requires one-hot encoded data as input (as produced by :ref:`OneHot` encoder), where use_positional_info must be set to True.
 
     Notes:
 
@@ -43,7 +44,7 @@ class ReceptorCNN(MLMethod):
 
         kernel_size (list): sizes of the kernels = how many amino acids to consider at the same time in the chain sequence, can be a tuple of values; e.g. for value [3, 4] of kernel_size, kernel_count*len(kernel_size) kernels will be created, with kernel_count kernels of size 3 and kernel_count kernels of size 4 per chain
 
-        positional_channels (int): how many positional channels where included in one-hot encoding of the receptor sequences (default is 3 in one-hot encoder)
+        positional_channels (int): how many positional channels where included in one-hot encoding of the receptor sequences (:ref:`OneHot` encoder adds 3 positional channels positional information is enabled)
 
         sequence_type (SequenceType): type of the sequence
 
@@ -110,22 +111,25 @@ class ReceptorCNN(MLMethod):
         self.batch_size = batch_size
         self.evaluate_at = evaluate_at
         self.training_percentage = training_percentage
-        self.sequence_type = SequenceType[sequence_type.upper()]
-        self.background_probabilities = background_probabilities if background_probabilities is not None \
-            else np.array([1. / len(EnvironmentSettings.get_sequence_alphabet(self.sequence_type))
-                           for i in range(len(EnvironmentSettings.get_sequence_alphabet(self.sequence_type)))])
+        self.sequence_type = None if sequence_type is None else SequenceType[sequence_type.upper()]
+
+        self.background_probabilities = None
         self.CNN = None
-        self.label_name = None
+        self.label = None
         self.class_mapping = None
         self.result_path = result_path
         self.chain_names = None
         self.feature_names = None
 
-    def predict(self, encoded_data: EncodedData, label_name: str):
-        predictions_proba = self.predict_proba(encoded_data, label_name)
-        return {self.label_name: [self.class_mapping[val] for val in (predictions_proba[self.label_name][:, 1] > 0.5).tolist()]}
+    def predict(self, encoded_data: EncodedData, label: Label):
+        predictions_proba = self.predict_proba(encoded_data, label)
+        return {label.name: [self.class_mapping[val] for val in (predictions_proba[label.name][:, 1] > 0.5).tolist()]}
 
-    def predict_proba(self, encoded_data: EncodedData, label_name: str):
+    def set_background_probabilities(self):
+        self.background_probabilities = np.array([1. / len(EnvironmentSettings.get_sequence_alphabet(self.sequence_type))
+                           for i in range(len(EnvironmentSettings.get_sequence_alphabet(self.sequence_type)))])
+
+    def predict_proba(self, encoded_data: EncodedData, label: Label):
         # set the model to evaluation mode for inference
         self.CNN.eval()
 
@@ -135,14 +139,14 @@ class ReceptorCNN(MLMethod):
         # make predictions
         with torch.no_grad():
             predictions = []
-            for examples, labels, example_ids in self._get_data_batch(encoded_data_pt, label_name):
+            for examples, labels, example_ids in self._get_data_batch(encoded_data_pt, label.name):
                 logit_outputs = self.CNN(examples)
                 prediction = torch.sigmoid(logit_outputs)
                 predictions.extend(prediction.numpy())
 
-        return {self.label_name: np.vstack([1 - np.array(predictions), predictions]).T}
+        return {self.label.name: np.vstack([1 - np.array(predictions), predictions]).T}
 
-    def fit(self, encoded_data: EncodedData, label_name: str, cores_for_training: int = 2):
+    def fit(self, encoded_data: EncodedData, label: Label, cores_for_training: int = 2):
 
         self.feature_names = encoded_data.feature_names
 
@@ -155,8 +159,8 @@ class ReceptorCNN(MLMethod):
         self._make_CNN()
         self.CNN.to(device=self.device)
 
-        self.class_mapping = Util.make_binary_class_mapping(encoded_data.labels[label_name])
-        self.label_name = label_name
+        self.label = label
+        self.class_mapping = Util.make_binary_class_mapping(encoded_data.labels[self.label.name])
 
         self.CNN.train()
 
@@ -168,7 +172,7 @@ class ReceptorCNN(MLMethod):
 
         logging.info("ReceptorCNN: starting training.")
         while iteration < self.iteration_count:
-            for examples, labels, example_ids in self._get_data_batch(train_data, self.label_name):
+            for examples, labels, example_ids in self._get_data_batch(train_data, self.label.name):
 
                 # Reset gradients
                 optimizer.zero_grad()
@@ -198,16 +202,16 @@ class ReceptorCNN(MLMethod):
 
         logging.info("ReceptorCNN: finished training.")
 
-    def fit_by_cross_validation(self, encoded_data: EncodedData, number_of_splits: int = 5, label_name: str = None, cores_for_training: int = -1,
+    def fit_by_cross_validation(self, encoded_data: EncodedData, number_of_splits: int = 5, label: Label = None, cores_for_training: int = -1,
                                 optimization_metric=None):
         logging.warning(f"{ReceptorCNN.__name__}: cross_validation is not implemented for this method. Using standard fitting instead...")
-        self.fit(encoded_data=encoded_data, label_name=label_name)
+        self.fit(encoded_data=encoded_data, label=label)
 
-    def _get_data_batch(self, encoded_data: EncodedData, label):
+    def _get_data_batch(self, encoded_data: EncodedData, label_name: str):
         batch_count = int(math.ceil(len(encoded_data.example_ids) / self.batch_size))
         for i in range(batch_count):
             start_index, end_index = int(self.batch_size * i), int(self.batch_size * (i + 1))
-            yield encoded_data.examples[start_index: end_index], encoded_data.labels[label][start_index: end_index], \
+            yield encoded_data.examples[start_index: end_index], encoded_data.labels[label_name][start_index: end_index], \
                   encoded_data.example_ids[start_index: end_index]
 
     def _prepare_and_split_data(self, encoded_data: EncodedData):
@@ -227,8 +231,8 @@ class ReceptorCNN(MLMethod):
         examples = np.swapaxes(encoded_data.examples, 2, 3)
         return EncodedData(examples=torch.from_numpy(examples[indices]).float(),
                            labels={
-                               label: torch.from_numpy(np.array([encoded_data.labels[label][i] for i in indices]) == self.class_mapping[1]).float()
-                               for label in encoded_data.labels.keys()},
+                               label_name: torch.from_numpy(np.array([encoded_data.labels[label_name][i] for i in indices]) == self.class_mapping[1]).float()
+                               for label_name in encoded_data.labels.keys()},
                            example_ids=[encoded_data.example_ids[i] for i in indices], feature_names=encoded_data.feature_names,
                            feature_annotations=encoded_data.feature_annotations, encoding=encoded_data.encoding)
 
@@ -258,7 +262,7 @@ class ReceptorCNN(MLMethod):
             loss = 0.
 
             with torch.no_grad():
-                for examples, labels, example_ids in self._get_data_batch(data, self.label_name):
+                for examples, labels, example_ids in self._get_data_batch(data, self.label.name):
                     logit_outputs = self.CNN(examples)
                     loss += loss_func(logit_outputs, labels) / len(data.example_ids)
 
@@ -277,6 +281,9 @@ class ReceptorCNN(MLMethod):
         custom_vars["kernel_size"] = list(custom_vars["kernel_size"])
         custom_vars["sequence_type"] = custom_vars["sequence_type"].name.lower()
 
+        if self.label:
+            custom_vars["label"] = vars(self.label)
+
         params_path = path / "custom_params.yaml"
         with params_path.open('w') as file:
             yaml.dump(custom_vars, file)
@@ -288,7 +295,10 @@ class ReceptorCNN(MLMethod):
 
         for param, value in custom_params.items():
             if hasattr(self, param):
-                setattr(self, param, value)
+                if param == "label":
+                    setattr(self, "label", Label(**value))
+                else:
+                    setattr(self, param, value)
 
         self.background_probabilities = np.array(self.background_probabilities)
         self.sequence_type = SequenceType[self.sequence_type.upper()]
@@ -297,30 +307,22 @@ class ReceptorCNN(MLMethod):
         self.CNN.load_state_dict(torch.load(str(path / "CNN.pt")))
 
     def _make_CNN(self):
+        if self.background_probabilities is None:
+            self.set_background_probabilities()
+
         self.CNN = RCNN(kernel_count=self.kernel_count, kernel_size=self.kernel_size, positional_channels=self.positional_channels,
                         sequence_type=self.sequence_type, background_probabilities=self.background_probabilities, chain_names=self.chain_names)
 
-    def get_model(self, label_names: list = None):
-        return vars(self)
-
     def check_if_exists(self, path):
         return self.CNN is not None
-
-    def get_classes_for_label(self, label) -> np.ndarray:
-        if self.label_name == label:
-            return np.array(list(self.class_mapping.values()))
-
-    def get_class_mapping_for_label(self, label) -> dict:
-        if self.label_name == label:
-            return self.class_mapping
 
     def get_params(self):
         params = copy.deepcopy(vars(self))
         params["CNN"] = copy.deepcopy(self.CNN).state_dict()
         return params
 
-    def get_label(self):
-        return self.label_name
+    def get_label_name(self):
+        return self.label.name
 
     def get_package_info(self) -> str:
         return Util.get_immuneML_version()
@@ -331,12 +333,40 @@ class ReceptorCNN(MLMethod):
     def can_predict_proba(self) -> bool:
         return True
 
-    def get_classes(self) -> list:
-        return list(self.class_mapping.values())
-
     def get_class_mapping(self) -> dict:
         return self.class_mapping
 
     def get_compatible_encoders(self):
         from immuneML.encodings.onehot.OneHotEncoder import OneHotEncoder
         return [OneHotEncoder]
+
+    def check_encoder_compatibility(self, encoder):
+        """Checks whether the given encoder is compatible with this ML method, and throws an error if it is not."""
+        is_valid = False
+
+        for encoder_class in self.get_compatible_encoders():
+            if issubclass(encoder.__class__, encoder_class):
+                is_valid = True
+                break
+
+        if not is_valid:
+            raise ValueError(f"{encoder.__class__.__name__} is not compatible with ML Method {self.__class__.__name__}. "
+                             f"Please use one of the following encoders instead: {', '.join([enc_class.__name__ for enc_class in self.get_compatible_encoders()])}")
+
+        if (self.positional_channels == 3 and encoder.use_positional_info == False) or (self.positional_channels == 0 and encoder.use_positional_info == True):
+            mssg = f"The specified parameters for {encoder.__class__.__name__} are not compatible with ML Method {self.__class__.__name__}. "
+
+            if encoder.use_positional_info:
+                mssg += f"To include positional information, set the parameter 'positional_channels' of {self.__class__.__name__} to 3 (now {self.positional_channels}), " \
+                        f"or to ignore positional information, set the parameter 'use_positional_info' of {encoder.__class__.__name__} to False (now {encoder.use_positional_info}). "
+            else:
+                mssg += f"To include positional information, set the parameter 'use_positional_info' of {encoder.__class__.__name__} to True (now {encoder.use_positional_info}), " \
+                        f"or to ignore positional information, set the parameter 'positional_channels' of {self.__class__.__name__} to 0 (now {self.positional_channels})."
+
+            raise ValueError(mssg)
+
+
+
+
+
+

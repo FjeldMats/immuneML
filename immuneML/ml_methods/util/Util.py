@@ -15,7 +15,7 @@ class Util:
     def map_to_old_class_values(y, class_mapping: dict):
         try:
             old_class_type = np.array(list(class_mapping.values())).dtype
-            mapped_y = np.copy(y).astype(np.object)
+            mapped_y = np.copy(y).astype(object)
             for i in range(mapped_y.shape[0]):
                 mapped_y[i] = class_mapping[y[i]]
             return mapped_y.astype(old_class_type)
@@ -27,7 +27,7 @@ class Util:
     @staticmethod
     def map_to_new_class_values(y, class_mapping: dict):
         try:
-            mapped_y = np.copy(y).astype(np.object)
+            mapped_y = np.copy(y).astype(object)
             switched_mapping = {value: key for key, value in class_mapping.items()}
             new_class_type = np.array(list(switched_mapping.values())).dtype
             for i in range(mapped_y.shape[0]):
@@ -60,26 +60,19 @@ class Util:
              mapping dictionary where 0 and 1 are always the keys and the values are original class names which were mapped for these values
 
         """
-        unique_values = np.sort(np.unique(y))
-        assert unique_values.shape[0] == 2, f"MLMethod: there has two be exactly two classes to use this classifier," \
-                                            f" instead got {str(unique_values.tolist())[1:-1]}. For multi-class classification, " \
+        unique_values = sorted(set(y))
+        assert len(unique_values) == 2, f"MLMethod: there has two be exactly two classes to use this classifier," \
+                                            f" instead got {str(unique_values)[1:-1]}. For multi-class classification, " \
                                             f"consider some of the other classifiers."
 
-        if 0 == unique_values[0] and 1 == unique_values[1] and unique_values.dtype != bool:
-            mapping = {0: 0, 1: 1}
-        elif 0 == unique_values[0] and 1 == unique_values[1] and unique_values.dtype == bool:
-            mapping = {0: False, 1: True}
-        else:
-            mapping = {0: unique_values[0], 1: unique_values[1]}
-
-        return mapping
+        return {0: unique_values[0], 1: unique_values[1]}
 
     @staticmethod
-    def binarize_labels(true_y, predicted_y, labels):
+    def binarize_label_classes(true_y, predicted_y, classes):
         """Binarizes the predictions in place using scikit-learn's label_binarize() method"""
         if hasattr(true_y, 'dtype') and true_y.dtype.type is np.str_ or isinstance(true_y, list) and any(isinstance(item, str) for item in true_y):
-            true_y = label_binarize(true_y, classes=labels)
-            predicted_y = label_binarize(predicted_y, classes=labels)
+            true_y = label_binarize(true_y, classes=classes)
+            predicted_y = label_binarize(predicted_y, classes=classes)
 
         return true_y, predicted_y
 

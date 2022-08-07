@@ -23,7 +23,7 @@ representations, ML models, reports and visualizations.
 Useful links:
 - Main website: https://immuneml.uio.no
 - Documentation: https://docs.immuneml.uio.no
-- Galaxy web interface: https://galaxy.immuneml.uio.no
+- Galaxy web interface: https://galaxy.immuneml.uiocloud.no
 
 
 
@@ -90,7 +90,7 @@ The quickest way to familiarize yourself with immuneML usage is to follow
 one of the [Quickstart tutorials](https://docs.immuneml.uio.no/quickstart.html).
 These tutorials provide a step-by-step guide on how to use immuneML for a 
 simple machine learning analysis on an adaptive immune receptor repertoire (AIRR) dataset,
-using either the command line tool or the [Galaxy web interface](https://galaxy.immuneml.uio.no). 
+using either the command line tool or the [Galaxy web interface](https://galaxy.immuneml.uiocloud.no). 
 
 
 ### Overview of input, analyses and results
@@ -192,10 +192,8 @@ If you would like to make contributions, for example by adding a new ML method, 
 
 If you are using immuneML in any published work, please cite:
 
-Pavlovic, M., Scheffer, L., Motwani, K., Kanduri, C., Kompova, R., Vazov, N., Waagan, K., Bernal, F. L. M., Costa, A. A., Corrie, B., Akbar, R., 
-Hajj, G. S. A., Balaban, G., Brusko, T. M., Chernigovskaya, M., Christley, S., Cowell, L. G., Frank, R., Grytten, I., … Sandve, G. K. (2021). 
-immuneML: An ecosystem for machine learning analysis of adaptive immune receptor repertoires. BioRxiv, 2021.03.08.433891. 
-https://doi.org/10.1101/2021.03.08.433891
+Pavlović, M., Scheffer, L., Motwani, K. et al. The immuneML ecosystem for machine learning analysis of adaptive immune 
+receptor repertoires. Nat Mach Intell 3, 936–944 (2021). https://doi.org/10.1038/s42256-021-00413-z
 
 
 

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List
 
 from immuneML.data_model.dataset.Dataset import Dataset
+from immuneML.environment.Label import Label
 from immuneML.environment.LabelConfiguration import LabelConfiguration
 from immuneML.hyperparameter_optimization.HPSetting import HPSetting
 from immuneML.hyperparameter_optimization.core.HPSelection import HPSelection
@@ -36,7 +37,9 @@ class HPAssessment:
     @staticmethod
     def run_assessment(state: TrainMLModelState) -> TrainMLModelState:
 
-        tate = HPAssessment._create_root_path(state)
+        ray.init(address='auto')
+
+        state = HPAssessment._create_root_path(state)
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path,
                                                               state.label_configuration)
         n_splits = len(train_val_datasets)
@@ -55,6 +58,8 @@ class HPAssessment:
 
         ### combine every state into a single state (last state)
         combined_state = HPAssessment._combine_states(states)
+
+        ray.shutdown()
         return combined_state
 
 
@@ -85,14 +90,11 @@ class HPAssessment:
         state = HPSelection.run_selection(state, train_val_dataset, current_path, split_index)
         state = ray.get(HPAssessment.run_assessment_split_per_label.remote(state, split_index))
 
-        assessment_state.train_val_data_reports = ReportUtil.run_data_reports(train_val_dataset,
-                                                                              state.assessment.reports.data_split_reports.values(),
-                                                                              current_path / "data_report_train",
-                                                                              state.context)
-        assessment_state.test_data_reports = ReportUtil.run_data_reports(test_dataset,
-                                                                         state.assessment.reports.data_split_reports.values(),
-                                                                         current_path / "data_report_test",
-                                                                         state.context)
+
+        assessment_state.train_val_data_reports = ReportUtil.run_data_reports(train_val_dataset, state.assessment.reports.data_split_reports.values(),
+                                                                              current_path / "data_report_train", state.number_of_processes, state.context)
+        assessment_state.test_data_reports = ReportUtil.run_data_reports(test_dataset, state.assessment.reports.data_split_reports.values(),
+                                                                         current_path / "data_report_test", state.number_of_processes, state.context)
 
         print(
             f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {split_index + 1}/{n_splits}.\n',
@@ -106,34 +108,33 @@ class HPAssessment:
         """iterate through labels and hp_settings and retrain all models"""
         n_labels = state.label_configuration.get_label_count()
 
-        for idx, label in enumerate(state.label_configuration.get_labels_by_name()):
+        for idx, label in enumerate(state.label_configuration.get_label_objects()):
 
             print(f"{datetime.datetime.now()}: Training ML model: running the inner loop of nested CV: "
-                  f"retrain models for label {label} (label {idx + 1} / {n_labels}).\n", flush=True)
+                  f"retrain models for label {label.name} (label {idx + 1} / {n_labels}).\n", flush=True)
 
             path = state.assessment_states[split_index].path
 
             for index, hp_setting in enumerate(state.hp_settings):
 
-                if hp_setting != state.assessment_states[split_index].label_states[label].optimal_hp_setting:
-                    setting_path = path / f"{label}_{hp_setting}/"
+                if hp_setting != state.assessment_states[split_index].label_states[label.name].optimal_hp_setting:
+                    setting_path = path / f"{label.name}_{hp_setting}/"
                 else:
-                    setting_path = path / f"{label}_{hp_setting}_optimal/"
+                    setting_path = path / f"{label.name}_{hp_setting}_optimal/"
 
                 train_val_dataset = state.assessment_states[split_index].train_val_dataset
                 test_dataset = state.assessment_states[split_index].test_dataset
                 state = HPAssessment.reeval_on_assessment_split(state, train_val_dataset, test_dataset, hp_setting,
                                                                 setting_path, label, split_index)
 
-            print(
-                f"{datetime.datetime.now()}: Training ML model: running the inner loop of nested CV: completed retraining models "
-                f"for label {label} (label {idx + 1} / {n_labels}).\n", flush=True)
+            print(f"{datetime.datetime.now()}: Training ML model: running the inner loop of nested CV: completed retraining models "
+                  f"for label {label.name} (label {idx + 1} / {n_labels}).\n", flush=True)
 
         return state
 
     @staticmethod
-    def reeval_on_assessment_split(state, train_val_dataset: Dataset, test_dataset: Dataset, hp_setting: HPSetting,
-                                   path: Path, label: str,
+
+    def reeval_on_assessment_split(state, train_val_dataset: Dataset, test_dataset: Dataset, hp_setting: HPSetting, path: Path, label: Label,
                                    split_index: int) -> MLMethod:
         """retrain model for specific label, assessment split and hp_setting"""
 
@@ -144,11 +145,9 @@ class HPAssessment:
                                     ml_reports=state.assessment.reports.model_reports.values(),
                                     number_of_processes=state.number_of_processes,
                                     encoding_reports=state.assessment.reports.encoding_reports.values(),
-                                    label_config=LabelConfiguration(
-                                        [state.label_configuration.get_label_object(label)])) \
-            .run(split_index)
+                                    label_config=LabelConfiguration([label])).run(split_index)
 
-        state.assessment_states[split_index].label_states[label].assessment_items[str(hp_setting)] = assessment_item
+        state.assessment_states[split_index].label_states[label.name].assessment_items[str(hp_setting)] = assessment_item
 
         return state
 

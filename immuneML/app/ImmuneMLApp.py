@@ -5,7 +5,6 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-import ray
 
 from immuneML.caching.CacheType import CacheType
 from immuneML.dsl.ImmuneMLParser import ImmuneMLParser
@@ -39,7 +38,6 @@ class ImmuneMLApp:
     def run(self):
 
         self.set_cache()
-        ray.init(address='auto')
 
         print(f"{datetime.datetime.now()}: ImmuneML: parsing the specification...\n", flush=True)
 
@@ -82,6 +80,8 @@ def main():
     parser.add_argument("result_path", help="Output directory path.")
     parser.add_argument("--tool", help="Name of the tool which calls immuneML. This name will be used to invoke appropriate API call, "
                                        "which will then do additional work in tool-dependent way before running standard immuneML.")
+    parser.add_argument("--version", action="version", version=Constants.VERSION)
+
     namespace = parser.parse_args()
     namespace.specification_path = Path(namespace.specification_path)
     namespace.result_path = Path(namespace.result_path)

@@ -8,7 +8,6 @@ from sklearn.metrics import roc_curve
 from immuneML.environment.Constants import Constants
 from immuneML.environment.Label import Label
 from immuneML.hyperparameter_optimization.states.HPItem import HPItem
-from immuneML.ml_methods.util.Util import Util
 from immuneML.ml_metrics.ml_metrics import roc_auc_score
 from immuneML.reports.ReportOutput import ReportOutput
 from immuneML.reports.ReportResult import ReportResult
@@ -18,7 +17,7 @@ from immuneML.util.PathBuilder import PathBuilder
 
 class ROCCurveSummary(TrainMLModelReport):
     """
-    This report plots ROC curves for all trained ML settings ([preprocessing], encoding, ML model) in the outer loop of cross-validation in
+    This report plots ROC curves for all trained ML settings ([preprocessing], encoding, ML model) in the outer loop of cross-validation in the
     :ref:`TrainMLModel` instruction. If there are multiple splits in the outer loop, this report will make one plot per split. This report is
     defined only for binary classification. If there are multiple labels defined in the instruction, each label has to have two classes to be included
     in this report.
@@ -40,7 +39,8 @@ class ROCCurveSummary(TrainMLModelReport):
         return ROCCurveSummary(**kwargs)
 
     def _generate(self) -> ReportResult:
-        report_result = ReportResult()
+        report_result = ReportResult(name=self.name,
+                                     info="Plots ROC curves for all trained ML settings ([preprocessing], encoding, ML model) in the outer loop of cross-validation in the TrainMLModel instruction")
 
         PathBuilder.build(self.result_path)
 
@@ -71,9 +71,12 @@ class ROCCurveSummary(TrainMLModelReport):
         df = pd.read_csv(hp_item.test_predictions_path)
 
         true_y = df[f"{label_name}_true_class"].values
-        predicted_y = df[proba_name].values
 
-        true_y = Util.map_to_new_class_values(true_y, hp_item.method.get_class_mapping())
+        if hp_item.method.can_predict_proba():
+            predicted_y = df[proba_name].values
+        else:
+            predicted_y = df[f"{label_name}_predicted_class"].values
+
         fpr, tpr, _ = roc_curve(y_true=true_y, y_score=predicted_y)
 
         return {

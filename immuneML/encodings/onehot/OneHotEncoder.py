@@ -10,6 +10,7 @@ from immuneML.encodings.DatasetEncoder import DatasetEncoder
 from immuneML.encodings.EncoderParams import EncoderParams
 from immuneML.environment.EnvironmentSettings import EnvironmentSettings
 from immuneML.environment.SequenceType import SequenceType
+from immuneML.util.EncoderHelper import EncoderHelper
 from immuneML.util.ParameterValidator import ParameterValidator
 from immuneML.util.ReflectionHandler import ReflectionHandler
 
@@ -62,7 +63,7 @@ class OneHotEncoder(DatasetEncoder):
 
         flatten (bool): whether to flatten the final onehot matrix to a 2-dimensional matrix [examples, other_dims_combined]
         This must be set to True when using onehot encoding in combination with scikit-learn ML methods (inheriting :py:obj:`~source.ml_methods.SklearnMethod.SklearnMethod`),
-        such as :ref:`LogisticRegression`, :ref:`SVM`, :ref:`RandomForestClassifier` and :ref:`KNN`.
+        such as :ref:`LogisticRegression`, :ref:`SVM`, :ref:`SVC`, :ref:`RandomForestClassifier` and :ref:`KNN`.
 
         sequence_type: whether to use nucleotide or amino acid sequence for encoding. Valid values are 'nucleotide' and 'amino_acid'.
 
@@ -135,13 +136,11 @@ class OneHotEncoder(DatasetEncoder):
 
     @staticmethod
     def build_object(dataset=None, **params):
+        EncoderHelper.check_dataset_type_available_in_mapping(dataset, OneHotEncoder)
 
-        try:
-            prepared_params = OneHotEncoder._prepare_parameters(**params)
-            encoder = ReflectionHandler.get_class_by_name(OneHotEncoder.dataset_mapping[dataset.__class__.__name__],
+        prepared_params = OneHotEncoder._prepare_parameters(**params)
+        encoder = ReflectionHandler.get_class_by_name(OneHotEncoder.dataset_mapping[dataset.__class__.__name__],
                                                           "onehot/")(**prepared_params)
-        except ValueError:
-            raise ValueError("{} is not defined for dataset of type {}.".format(OneHotEncoder.__name__, dataset.__class__.__name__))
         return encoder
 
     def encode(self, dataset, params: EncoderParams):

@@ -1,10 +1,10 @@
-import warnings
-import pandas as pd
-import subprocess
 import os
-
-
+import subprocess
+import warnings
 from pathlib import Path
+
+import pandas as pd
+
 from immuneML.environment.EnvironmentSettings import EnvironmentSettings
 
 
@@ -16,12 +16,11 @@ class CompAIRRHelper:
             try:
                 compairr_path = CompAIRRHelper.check_compairr_path("compairr")
             except Exception as e:
-                compairr_path = CompAIRRHelper._check_compairr_path("/usr/local/bin/compairr")
+                compairr_path = CompAIRRHelper.check_compairr_path("/usr/local/bin/compairr")
         else:
             compairr_path = CompAIRRHelper.check_compairr_path(compairr_path)
 
         return compairr_path
-
 
     @staticmethod
     def check_compairr_path(compairr_path):
@@ -61,18 +60,22 @@ class CompAIRRHelper:
 
     @staticmethod
     def write_repertoire_file(repertoire_dataset, filename, compairr_params):
-        with open(filename, "w") as file:
-            file.write("junction_aa\tduplicate_count\tv_call\tj_call\trepertoire_id\n")
+        mode = "w"
+        header = True
 
         for repertoire in repertoire_dataset.get_data():
             repertoire_contents = CompAIRRHelper.get_repertoire_contents(repertoire, compairr_params)
+            repertoire_contents.to_csv(filename, mode=mode, header=header, index=False, sep="\t")
 
-            repertoire_contents.to_csv(filename, mode='a', header=False, index=False, sep="\t")
+            mode = "a"
+            header = False
 
 
     @staticmethod
     def get_repertoire_contents(repertoire, compairr_params):
-        repertoire_contents = repertoire.get_attributes([EnvironmentSettings.get_sequence_type().value, "counts", "v_genes", "j_genes"])
+        attributes = [EnvironmentSettings.get_sequence_type().value, "counts"]
+        attributes += [] if compairr_params.ignore_genes else ["v_genes", "j_genes"]
+        repertoire_contents = repertoire.get_attributes(attributes)
         repertoire_contents = pd.DataFrame({**repertoire_contents, "identifier": repertoire.identifier})
 
         check_na_rows = [EnvironmentSettings.get_sequence_type().value]
@@ -90,23 +93,34 @@ class CompAIRRHelper:
         if compairr_params.ignore_counts:
             repertoire_contents["counts"] = 1
 
+        repertoire_contents.rename(columns={EnvironmentSettings.get_sequence_type().value: "junction_aa",
+                                           "v_genes": "v_call", "j_genes": "j_call",
+                                           "counts": "duplicate_count", "identifier": "repertoire_id"},
+                                   inplace=True)
+
         return repertoire_contents
 
-
     @staticmethod
-    def process_compairr_output_file(subprocess_result, compairr_params, result_path):
+    def verify_compairr_output_path(subprocess_result, compairr_params, result_path):
         output_file = result_path / compairr_params.output_filename
 
         if not output_file.is_file():
-            raise RuntimeError(f"CompAIRRHelper: failed to calculate the distance matrix with CompAIRR ({compairr_params.compairr_path}). "
-                               f"The following error occurred: {subprocess_result.stderr}")
+            raise RuntimeError(
+                f"CompAIRRHelper: failed to calculate the distance matrix with CompAIRR ({compairr_params.compairr_path}). "
+                f"The following error occurred: {subprocess_result.stderr}")
 
         if os.path.getsize(output_file) == 0:
             raise RuntimeError(
                 f"CompAIRRHelper: failed to calculate the distance matrix with CompAIRR ({compairr_params.compairr_path}), output matrix is empty. "
                 f"For details see the log file at {result_path / compairr_params.log_filename}")
 
-        raw_distance_matrix = pd.read_csv(output_file, sep="\t", index_col=0)
+        return output_file
 
-        return raw_distance_matrix
+    @staticmethod
+    def read_compairr_output_file(output_file):
+        return pd.read_csv(output_file, sep="\t", index_col=0)
 
+    @staticmethod
+    def process_compairr_output_file(subprocess_result, compairr_params, result_path):
+        output_file = CompAIRRHelper.verify_compairr_output_path(subprocess_result, compairr_params, result_path)
+        return CompAIRRHelper.read_compairr_output_file(output_file)
