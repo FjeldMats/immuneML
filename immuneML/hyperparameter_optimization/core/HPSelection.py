@@ -31,8 +31,6 @@ class HPSelection:
         train_datasets, val_datasets = HPUtil.split_data(train_val_dataset, state.selection, path, state.label_configuration)
 
         n_labels = state.label_configuration.get_label_count()
-        
-        states = []
 
         for idx, label in enumerate(state.label_configuration.get_label_objects()):
 

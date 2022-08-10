@@ -61,8 +61,6 @@ class HPAssessment:
         return combined_state
 
 
-        return state
-
     @staticmethod
     def _create_root_path(state: TrainMLModelState) -> TrainMLModelState:
         name = state.name if state.name is not None else "result"
