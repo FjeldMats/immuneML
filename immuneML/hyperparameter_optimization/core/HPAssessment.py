@@ -36,9 +36,7 @@ class HPAssessment:
 
     @staticmethod
     def run_assessment(state: TrainMLModelState) -> TrainMLModelState:
-
-        ray.init(address='auto')
-
+        
         state = HPAssessment._create_root_path(state)
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path,
                                                               state.label_configuration)
