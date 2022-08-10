@@ -5,6 +5,7 @@ import os
 import shutil
 import warnings
 from pathlib import Path
+import ray
 
 from immuneML.caching.CacheType import CacheType
 from immuneML.dsl.ImmuneMLParser import ImmuneMLParser
@@ -65,6 +66,12 @@ def run_immuneML(namespace: argparse.Namespace):
     logging.basicConfig(filename=Path(namespace.result_path) / "log.txt", level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
     warnings.showwarning = lambda message, category, filename, lineno, file=None, line=None: logging.warning(message)
 
+    print(f'ray address: {namespace.ray_address}')
+    if namespace.ray_address is None:
+        ray.init()
+    else:
+        ray.init(namespace.ray_address)
+
     if namespace.tool is None:
         app = ImmuneMLApp(namespace.specification_path, namespace.result_path)
     else:
@@ -78,6 +85,7 @@ def main():
     parser = argparse.ArgumentParser(description="immuneML command line tool")
     parser.add_argument("specification_path", help="Path to specification YAML file. Always used to define the analysis.")
     parser.add_argument("result_path", help="Output directory path.")
+    parser.add_argument("--ray_address", help="Address of the Ray cluster to use for parallelization.")
     parser.add_argument("--tool", help="Name of the tool which calls immuneML. This name will be used to invoke appropriate API call, "
                                        "which will then do additional work in tool-dependent way before running standard immuneML.")
     parser.add_argument("--version", action="version", version=Constants.VERSION)
