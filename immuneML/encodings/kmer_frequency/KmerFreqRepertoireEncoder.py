@@ -29,7 +29,11 @@ class KmerFreqRepertoireEncoder(KmerFrequencyEncoder):
         arguments = [(repertoire, params) for repertoire in dataset.repertoires]
 
         with Pool(params.pool_size) as pool:
-            repertoires = pool.starmap(self.get_encoded_repertoire, arguments)
+            try:
+                repertoires = pool.starmap(self.get_encoded_repertoire, arguments)
+            except EOFError:
+                repertoires = pool.starmap(self.encode_repertoire, arguments)
+            
 
         encoded_repertoire_list, repertoire_names, labels, feature_annotation_names = zip(*repertoires)
 
