@@ -6,6 +6,7 @@ import shutil
 import warnings
 from pathlib import Path
 import ray
+import time
 
 from immuneML.caching.CacheType import CacheType
 from immuneML.dsl.ImmuneMLParser import ImmuneMLParser
@@ -38,6 +39,8 @@ class ImmuneMLApp:
 
     def run(self):
 
+        st = time.time()
+
         self.set_cache()
 
         print(f"{datetime.datetime.now()}: ImmuneML: parsing the specification...\n", flush=True)
@@ -55,6 +58,9 @@ class ImmuneMLApp:
 
         print(f"{datetime.datetime.now()}: ImmuneML: finished analysis.\n", flush=True)
 
+        elapsed_time = time.time() - st
+        print(f"Execution time:{datetime.timedelta(seconds=elapsed_time)} seconds")
+
         return result
 
 
@@ -68,9 +74,15 @@ def run_immuneML(namespace: argparse.Namespace):
 
     print(f'ray address: {namespace.ray_address}')
     if namespace.ray_address is None:
-        ray.init()
+        try:
+            ray.init(address='auto', include_dashboard=True, logging_level=logging.ERROR)
+        except ConnectionError:
+            print("Connection error starting new ray cluster")
+            ray.init(include_dashboard=True, logging_level=logging.ERROR)
     else:
-        ray.init(namespace.ray_address)
+        ray.init(namespace.ray_address, include_dashboard=True, logging_level=logging.ERROR)
+    
+    print(f"resources{ray.cluster_resources()}, ")
 
     if namespace.tool is None:
         app = ImmuneMLApp(namespace.specification_path, namespace.result_path)
