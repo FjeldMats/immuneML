@@ -26,6 +26,8 @@ class HPAssessment:
 
         for state in states[1:]:
             combined_state.hp_settings.extend(state.hp_settings)
+            combined_state.metrics.update(state.metrics)
+            combined_state.context.update(state.context)
             combined_state.reports.update(state.reports)
             combined_state.optimal_hp_items.update(state.optimal_hp_items)
             combined_state.optimal_hp_item_paths.update(state.optimal_hp_item_paths)
@@ -37,11 +39,6 @@ class HPAssessment:
     @staticmethod
     def run_assessment(state: TrainMLModelState) -> TrainMLModelState:
         
-        state = HPAssessment._create_root_path(state)
-        train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path,
-                                                              state.label_configuration)
-        n_splits = len(train_val_datasets)
-
         state = HPAssessment._create_root_path(state)
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
         n_splits = len(train_val_datasets)
@@ -57,7 +54,6 @@ class HPAssessment:
         ### combine every state into a single state (last state)
         combined_state = HPAssessment._combine_states(states)
 
-        ray.shutdown()
         return combined_state
 
 
@@ -73,7 +69,7 @@ class HPAssessment:
         """run inner CV loop (selection) and retrain on the full train_val_dataset after optimal model is chosen"""
 
         print(
-            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: started split {split_index + 1}/{n_splits}.\n',
+            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: started split {n_splits+1}.\n',
             flush=True)
 
         current_path = HPAssessment.create_assessment_path(state, split_index)
@@ -85,7 +81,7 @@ class HPAssessment:
         state.assessment_states.append(assessment_state)
 
         state = HPSelection.run_selection(state, train_val_dataset, current_path, split_index)
-        state = ray.get(HPAssessment.run_assessment_split_per_label.remote(state, split_index))
+        state = HPAssessment.run_assessment_split_per_label(state, split_index)
 
 
         assessment_state.train_val_data_reports = ReportUtil.run_data_reports(train_val_dataset, state.assessment.reports.data_split_reports.values(),
@@ -94,13 +90,12 @@ class HPAssessment:
                                                                          current_path / "data_report_test", state.number_of_processes, state.context)
 
         print(
-            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {split_index + 1}/{n_splits}.\n',
+            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {n_splits+1}.\n',
             flush=True)
 
         return state
 
     @staticmethod
-    @ray.remote
     def run_assessment_split_per_label(state: TrainMLModelState, split_index: int):
         """iterate through labels and hp_settings and retrain all models"""
         n_labels = state.label_configuration.get_label_count()

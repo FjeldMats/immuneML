@@ -8,12 +8,13 @@ from immuneML.hyperparameter_optimization.config.SplitType import SplitType
 from immuneML.hyperparameter_optimization.core.HPUtil import HPUtil
 from immuneML.hyperparameter_optimization.states.HPSelectionState import HPSelectionState
 from immuneML.hyperparameter_optimization.states.TrainMLModelState import TrainMLModelState
+from immuneML.hyperparameter_optimization.strategy.GridSearch import GridSearch
 from immuneML.util.PathBuilder import PathBuilder
 from immuneML.workflows.instructions.MLProcess import MLProcess
 import ray
 
 
-@ray.remote
+
 class HPSelection:
 
     @staticmethod
@@ -23,6 +24,7 @@ class HPSelection:
 
         return state
 
+    
     @staticmethod
     def run_selection(state: TrainMLModelState, train_val_dataset, current_path: Path, split_index: int) -> TrainMLModelState:
 
@@ -39,17 +41,37 @@ class HPSelection:
 
             selection_state = HPSelectionState(train_datasets, val_datasets, path, state.hp_strategy)
             state.assessment_states[split_index].label_states[label.name].selection_state = selection_state
+            
 
-            hp_setting = selection_state.hp_strategy.generate_next_setting()
-            while hp_setting is not None:
-                performance = HPSelection.evaluate_hp_setting(state, hp_setting, train_datasets, val_datasets,
-                                                              path, label, 0)
-                hp_setting = selection_state.hp_strategy.generate_next_setting(hp_setting, performance)
+            if False:
 
-            HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)
+                hp_settings = selection_state.hp_strategy.get_all_settings()
+            
+                performances = []
+                for hp_setting in hp_settings:
+
+                    performances.append({
+                    "HPSetting": hp_setting, 
+                    "metric": HPSelection.evaluate_hp_setting.remote(
+                        state, hp_setting, train_datasets, val_datasets,path, label, 0)})
+                
+                for preformance in performances: 
+                    preformance["metric"] = ray.get(preformance["metric"])
+                
+                selection_state.hp_strategy.input_hps_by_keys(performances)
+                HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)
+
+            else:
+                hp_setting = selection_state.hp_strategy.generate_next_setting()
+                while hp_setting is not None:
+                    performance = HPSelection.evaluate_hp_setting(state, hp_setting, train_datasets, val_datasets,
+                                                                    path, label, 0)
+                    hp_setting = selection_state.hp_strategy.generate_next_setting(hp_setting, performance)
+
+                HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)
 
             print(f"{datetime.datetime.now()}: Hyperparameter optimization: running the inner loop of nested CV: completed selection for "
-                  f"label {label.name} (label {idx + 1} / {n_labels}).\n", flush=True)
+                    f"label {label.name} (label {idx + 1} / {n_labels}).\n", flush=True)
 
         return state
 
@@ -59,6 +81,7 @@ class HPSelection:
 
         performances = []
         for index in range(state.selection.split_count):
+            print(index)
             performance = HPSelection.run_setting(state, hp_setting, train_datasets[index], val_datasets[index], index + 1,
                                                   current_path / f"split_{index + 1}" / f"{label.name}_{hp_setting.get_key()}",
                                                   label, assessment_split_index)
