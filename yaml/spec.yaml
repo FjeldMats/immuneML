@@ -3,19 +3,77 @@ definitions:
     dataset: # user-defined dataset name
       format: ImmuneML # the default format used by the 'Create dataset' galaxy tool is ImmuneML
       params:
-        path: ImmuneData/my_dataset_export_instruction/my_dataset/ImmuneML/my_dataset.iml_dataset
+        path: ImmuneData/my_simulation_instruction/exported_dataset/immuneml/my_synthetic_dataset.iml_dataset
+        metadata_file: ImmuneData/my_simulation_instruction/exported_dataset/immuneml/my_synthetic_dataset_metadata.csv
+        #number_of_processes: 4
 
   ml_methods:
-    my_log_reg: LogisticRegression
-    my_svm: SVM
+    my_svm:       
+        SVM:
+
+          C: [0.01, 0.1, 1, 10, 100]
+          show_warnings: False
+
+        model_selection_cv: True
+        model_selection_n_folds: 5
+
+    my_logistic_regression: 
+      LogisticRegression:
+
+          C: [0.01, 0.1, 1, 10, 100] 
+          show_warnings: False
+
+      model_selection_cv: True
+      model_selection_n_folds: 5
+
+
+    my_knn_method:
+      KNN:
+
+        weights: uniform 
+        n_neighbors: [1, 5, 10, 15, 20] # find the optimal number of neighbors
+        show_warnings: False
+
+      model_selection_cv: True
+      model_selection_n_folds: 5
+
+
+    #my_random_forest_classifier: # user-defined method name
+    #  RandomForestClassifier: # name of the ML method
+          # sklearn parameters (same names as in original sklearn class)
+    #      random_state: 100 # always use this value for random state
+    #      n_estimators: [10, 25, 50, 100] # find the optimal number of trees in the forest
+          # Additional parameter that determines whether to print convergence warnings
+    #      show_warnings: True
+      # if any of the parameters under RandomForestClassifier is a list and model_selection_cv is True,
+      # a grid search will be done over the given parameters, using the number of folds specified in model_selection_n_folds,
+      # and the optimal model will be selected
+    #  model_selection_cv: True
+    #  model_selection_n_folds: 4
+
+    
+    #my_deeprc_method:
+    #  DeepRC:
+    #      validation_part: 0.2
+    #      add_positional_information: True
+    #      kernel_size: 9
 
   encodings:
-    my_3mer_encoding: # user-defined encoding name
+    my_kmer_freq_encoding:
       KmerFrequency:
         k: 3
+    one_hot_vanilla:
+      OneHot:
+        use_positional_info: False
+        flatten: False
+        sequence_type: amino_acid
+
 
   reports:
-    my_benchmark: MLSettingsPerformance
+    my_performance: MLSettingsPerformance
+    my_coefficients: Coefficients
+    #my_performance_report: PerformanceOverview
+    my_roc_report: ROCCurve
 
 instructions:
   my_training_instruction: # user-defined instruction name
@@ -23,22 +81,40 @@ instructions:
 
     dataset: dataset # select the dataset defined above
     labels:
-      - HLA
+      - my_signal
 
     settings:
-      - encoding: my_3mer_encoding
-        ml_method: my_log_reg
-      #- encoding: my_3mer_encoding
-      #  ml_method: my_svm
+      - encoding: my_kmer_freq_encoding 
+        ml_method: my_logistic_regression           
+      - encoding: my_kmer_freq_encoding
+        ml_method: my_svm
+      - encoding: my_kmer_freq_encoding
+        ml_method: my_knn_method
 
-    assessment: # parameters in the assessment (outer) cross-validation loop
-      split_count: 2
-      split_strategy: random
-      training_percentage: 0.7
-    selection:
+      
+
+    assessment:                # example defining 5-fold cross-validation
       split_strategy: k_fold
       split_count: 2
+      reports:
+        models:                # plot the coefficients of the trained models
+        - my_coefficients
+        - my_roc_report
+    selection:                 # example defining 3-fold monte carlo cross-validation with
+      split_strategy: random   # 70% randomly chosen training data per split
+      split_count: 2
+      training_percentage: 0.7
 
-    optimization_metric: balanced_accuracy # the metric to optimize during nested cross-validation
+    optimization_metric: accuracy # the metric to optimize during nested cross-validation
+    metrics: 
+    - accuracy
+    - precision
+    - recall
+    
     strategy: GridSearch # strategy for hyperparameter optimization, GridSearch is currently the only available option
-    number_of_processes: 4 # processes for parallelization
+    refit_optimal_model: False
+    #reports:
+    #- my_performance
+    number_of_processes: 8 # processes for parallelization
+
+

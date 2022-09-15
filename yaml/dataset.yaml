@@ -1,20 +1,60 @@
 definitions:
   datasets:
-    my_dataset:
+    my_synthetic_dataset: # A synthetic dataset is generated on the fly. Alternatively, data import from files may be specified.
       format: RandomRepertoireDataset
       params:
-        labels:
-          HLA:
-            A: 0.9
-            B: 0.1
-        repertoire_count: 250
+        repertoire_count: 100
         sequence_count_probabilities:
-          1000: 0.5
-          1200: 0.5
+          10000: 1
         sequence_length_probabilities:
-          100: 1.0
+          1200: 0.33
+          1400: 0.33
+          1500: 0.33
+        labels: {}
+
+  motifs:
+
+    my_complex_motif: # complex motif containing a gap + hamming distance
+      seed: AA/A  # ‘/’ denotes gap position if present, if not, there’s no gap
+      instantiation:
+        GappedKmer:
+          min_gap: 1
+          max_gap: 2
+          hamming_distance_probabilities: # probabilities for each number of
+            0: 0.7                    # modification to the seed
+            1: 0.3
+          position_weights: # probabilities for modification per position
+            0: 1
+            1: 0 # note that index 2, the position of the gap,
+            3: 0 # is excluded from position_weights
+          alphabet_weights: # probabilities for using each amino acid in
+            A: 0.2      # a hamming distance modification
+            C: 0.2
+            D: 0.4
+            E: 0.2
+
+  signals:
+    my_signal:
+      motifs:
+        - my_complex_motif
+      implanting: HealthySequence
+      sequence_position_weights:
+        109: 0.1
+        110: 0.2
+        111: 0.5
+        112: 0.1
+
+  simulations:
+    my_simulation:
+      my_implanting:
+        signals:
+          - my_signal
+        dataset_implanting_rate: 0.3
+        repertoire_implanting_rate: 0.25
+
 instructions:
-  my_dataset_export_instruction:
-    type: DatasetExport
-    datasets: [my_dataset] # list of datasets to export
-    export_formats: [ImmuneML] # list of formats to export the datasets to.
+  my_simulation_instruction:
+    type: Simulation
+    dataset: my_synthetic_dataset
+    simulation: my_simulation
+    export_formats: [ImmuneML] # export the simulated dataset to these formats
