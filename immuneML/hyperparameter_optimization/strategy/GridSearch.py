@@ -1,4 +1,5 @@
 import copy
+from typing import List, Dict
 
 from immuneML.hyperparameter_optimization.HPSetting import HPSetting
 from immuneML.hyperparameter_optimization.HPSettingResult import HPSettingResult
@@ -20,6 +21,21 @@ class GridSearch(HPOptimizationStrategy):
             next_setting = None
 
         return copy.deepcopy(next_setting)
+    
+    def get_all_settings(self) -> List[HPSetting]:
+
+        keys = [key for key in self.search_space_metric]
+        hp_settings = []
+        
+        for key in keys: 
+            hp_settings.append(copy.deepcopy(self.hp_settings[key]))
+        
+        return hp_settings
+
+    def input_hps_by_keys(self, hps: List[Dict[HPSetting, float]]) -> None:
+        for hp in hps: 
+            self.search_space_metric[hp["HPSetting"].get_key()] = hp["metric"] 
+
 
     def get_optimal_hps(self) -> HPSetting:
         """
