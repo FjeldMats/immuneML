@@ -1,15 +1,11 @@
-FROM ubuntu:20.04
+FROM python:3.8
 
 # Copy files
 COPY . immuneML
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.8 python3-pip git-all -y
+RUN pip install -r immuneML/requirements.txt
 
-# install the dependency CompAIRR
-RUN git clone https://github.com/uio-bmi/compairr.git compairr_folder
-RUN make -C compairr_folder
-RUN cp ./compairr_folder/src/compairr ./compairr
+RUN apt-get update && apt-get upgrade -y && apt-get install -y rsync
 
-# Voila: install immuneML
-RUN pip3 install ./immuneML/[TCRdist]
+# get ray dashboard 
+RUN pip install -U "ray[default]"
