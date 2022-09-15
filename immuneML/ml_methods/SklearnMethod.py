@@ -7,15 +7,10 @@ import dill
 import numpy as np
 import pkg_resources
 import yaml
-import ray
 from sklearn.metrics import SCORERS
 from sklearn.model_selection import RandomizedSearchCV
+#from ray.tune.sklearn import TuneGridSearchCV
 from sklearn.utils.validation import check_is_fitted
-
-
-import joblib
-from ray.util.joblib import register_ray
-
 from immuneML.data_model.encoded_data.EncodedData import EncodedData
 from immuneML.environment.Label import Label
 from immuneML.ml_methods.MLMethod import MLMethod
@@ -77,7 +72,6 @@ class SklearnMethod(MLMethod):
     def __init__(self, parameter_grid: dict = None, parameters: dict = None):
         super(SklearnMethod, self).__init__()
         self.model = None
-        register_ray()
 
         if parameter_grid is not None and "show_warnings" in parameter_grid:
             self.show_warnings = parameter_grid.pop("show_warnings")[0]
@@ -100,7 +94,12 @@ class SklearnMethod(MLMethod):
 
         mapped_y = Util.map_to_new_class_values(encoded_data.labels[self.label.name], self.class_mapping)
 
-        self.model = self._fit(encoded_data.examples, mapped_y, cores_for_training)
+        import joblib
+        from ray.util.joblib import register_ray
+
+        register_ray()
+        with joblib.parallel_backend('ray'):
+            self.model = self._fit(encoded_data.examples, mapped_y, cores_for_training)
 
     def predict(self, encoded_data: EncodedData, label: Label):
         self.check_is_fitted(label.name)
@@ -161,9 +160,16 @@ class SklearnMethod(MLMethod):
             warnings.simplefilter("ignore")
             os.environ["PYTHONWARNINGS"] = "ignore"
 
-
         self.model = RandomizedSearchCV(model, param_distributions=self._parameter_grid, cv=number_of_splits, n_jobs=cores_for_training,
-                                        scoring=scoring, refit=True)
+                                           scoring=scoring, refit=True)
+
+        #self.model = TuneGridSearchCV(model, param_grid=self._parameter_grid, cv=number_of_splits, n_jobs=cores_for_training, scoring=scoring, refit=True)
+
+        
+        import joblib
+        from ray.util.joblib import register_ray
+
+        register_ray()
         with joblib.parallel_backend('ray'):
             self.model.fit(X, y)
 
