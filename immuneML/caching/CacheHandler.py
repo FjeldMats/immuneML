@@ -30,7 +30,10 @@ class CacheHandler:
         obj = None
         if filename.is_file():
             with filename.open("rb") as file:
-                obj = dill.load(file)
+                try:
+                    obj = dill.load(file)
+                except EOFError:
+                    return obj
         return obj
 
     @staticmethod
