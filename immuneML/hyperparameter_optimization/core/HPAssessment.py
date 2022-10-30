@@ -60,7 +60,7 @@ class HPAssessment:
             return combined_state
         else: 
             for index in range(n_splits):
-                state = HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], 0, index)
+                state = HPAssessment.run_assessment_split(state, train_val_datasets[index], test_datasets[index], 0, index)
             
             return state
 
@@ -73,7 +73,6 @@ class HPAssessment:
         return state
 
     @staticmethod
-    @ray.remote
     def run_assessment_split(state, train_val_dataset, test_dataset, split_index: int, n_splits):
         """run inner CV loop (selection) and retrain on the full train_val_dataset after optimal model is chosen"""
 

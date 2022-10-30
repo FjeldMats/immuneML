@@ -84,7 +84,6 @@ class HPSelection:
             performances.append(HPSelection.run_setting.remote(state, hp_setting, train_datasets[index], val_datasets[index], index + 1,
                                                   current_path / f"split_{index + 1}" / f"{label.name}_{hp_setting.get_key()}",
                                                   label, assessment_split_index))
-
         return HPUtil.get_average_performance(ray.get(performances))
 
     @staticmethod
