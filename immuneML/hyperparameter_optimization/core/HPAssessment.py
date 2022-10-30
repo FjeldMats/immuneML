@@ -60,7 +60,7 @@ class HPAssessment:
             return combined_state
         else: 
             for index in range(n_splits):
-                state = HPAssessment.run_assessment_split(state, train_val_datasets[index], test_datasets[index], 0, index)
+                state = HPAssessment.run_assessment_split(state, train_val_datasets[index], test_datasets[index], index, n_splits)
             
             return state
 
@@ -77,7 +77,7 @@ class HPAssessment:
         """run inner CV loop (selection) and retrain on the full train_val_dataset after optimal model is chosen"""
 
         print(
-            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: started split {n_splits+1}.\n',
+            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: started split {split_index + 1}/{n_splits}.\n',
             flush=True)
 
         current_path = HPAssessment.create_assessment_path(state, split_index)
@@ -97,7 +97,7 @@ class HPAssessment:
                                                                          current_path / "data_report_test", state.number_of_processes, state.context)
 
         print(
-            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {n_splits+1}.\n',
+            f'{datetime.datetime.now()}: Training ML model: running outer CV loop: finished split {split_index + 1}/{n_splits}.\n',
             flush=True)
 
         return state
