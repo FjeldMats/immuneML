@@ -43,18 +43,27 @@ class HPAssessment:
         train_val_datasets, test_datasets = HPUtil.split_data(state.dataset, state.assessment, state.path, state.label_configuration)
         n_splits = len(train_val_datasets)
 
-        states = []
 
-        ### split into n ray tasks
-        for index in range(n_splits):
-            states.append(HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], 0, index))
+        # for outer split parralell  
+        if False:
+            states = []
 
-        states = ray.get(states)
+            ### split into n ray tasks
+            for index in range(n_splits):
+                states.append(HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], 0, index))
 
-        ### combine every state into a single state (last state)
-        combined_state = HPAssessment._combine_states(states)
+            states = ray.get(states)
 
-        return combined_state
+            ### combine every state into a single state (last state)
+            combined_state = HPAssessment._combine_states(states)
+
+            return combined_state
+        else: 
+            for index in range(n_splits):
+                state = HPAssessment.run_assessment_split.remote(state, train_val_datasets[index], test_datasets[index], 0, index)
+            
+            return state
+
 
 
     @staticmethod
@@ -77,7 +86,6 @@ class HPAssessment:
         assessment_state = HPAssessmentState(split_index, train_val_dataset, test_dataset, current_path,
                                              state.label_configuration)
 
-        # going to cause issues?
         state.assessment_states.append(assessment_state)
 
         state = HPSelection.run_selection(state, train_val_dataset, current_path, split_index)

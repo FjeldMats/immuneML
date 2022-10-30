@@ -81,15 +81,14 @@ class HPSelection:
 
         performances = []
         for index in range(state.selection.split_count):
-            print(index)
-            performance = HPSelection.run_setting(state, hp_setting, train_datasets[index], val_datasets[index], index + 1,
+            performances.append(HPSelection.run_setting.remote(state, hp_setting, train_datasets[index], val_datasets[index], index + 1,
                                                   current_path / f"split_{index + 1}" / f"{label.name}_{hp_setting.get_key()}",
-                                                  label, assessment_split_index)
-            performances.append(performance)
+                                                  label, assessment_split_index))
 
-        return HPUtil.get_average_performance(performances)
+        return HPUtil.get_average_performance(ray.get(performances))
 
     @staticmethod
+    @ray.remote
     def run_setting(state: TrainMLModelState, hp_setting, train_dataset, val_dataset, split_index: int,
                     current_path: Path, label: Label, assessment_index: int):
 
