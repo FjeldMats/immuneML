@@ -42,36 +42,16 @@ class HPSelection:
             selection_state = HPSelectionState(train_datasets, val_datasets, path, state.hp_strategy)
             state.assessment_states[split_index].label_states[label.name].selection_state = selection_state
             
+            hp_setting = selection_state.hp_strategy.generate_next_setting()
+            while hp_setting is not None:
+                performance = HPSelection.evaluate_hp_setting(state, hp_setting, train_datasets, val_datasets,
+                                                                path, label, split_index)
+                hp_setting = selection_state.hp_strategy.generate_next_setting(hp_setting, performance)
 
-            if False:
+            HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)
 
-                hp_settings = selection_state.hp_strategy.get_all_settings()
-            
-                performances = []
-                for hp_setting in hp_settings:
-
-                    performances.append({
-                    "HPSetting": hp_setting, 
-                    "metric": HPSelection.evaluate_hp_setting.remote(
-                        state, hp_setting, train_datasets, val_datasets,path, label, 0)})
-                
-                for preformance in performances: 
-                    preformance["metric"] = ray.get(preformance["metric"])
-                
-                selection_state.hp_strategy.input_hps_by_keys(performances)
-                HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)
-
-            else:
-                hp_setting = selection_state.hp_strategy.generate_next_setting()
-                while hp_setting is not None:
-                    performance = HPSelection.evaluate_hp_setting(state, hp_setting, train_datasets, val_datasets,
-                                                                    path, label, 0)
-                    hp_setting = selection_state.hp_strategy.generate_next_setting(hp_setting, performance)
-
-                HPUtil.run_selection_reports(state, train_val_dataset, train_datasets, val_datasets, selection_state)
-
-            print(f"{datetime.datetime.now()}: Hyperparameter optimization: running the inner loop of nested CV: completed selection for "
-                    f"label {label.name} (label {idx + 1} / {n_labels}).\n", flush=True)
+        print(f"{datetime.datetime.now()}: Hyperparameter optimization: running the inner loop of nested CV: completed selection for "
+                f"label {label.name} (label {idx + 1} / {n_labels}).\n", flush=True)
 
         return state
 
@@ -87,7 +67,7 @@ class HPSelection:
         return HPUtil.get_average_performance(ray.get(performances))
 
     @staticmethod
-    @ray.remote
+    @ray.remote(num_cpus=8)
     def run_setting(state: TrainMLModelState, hp_setting, train_dataset, val_dataset, split_index: int,
                     current_path: Path, label: Label, assessment_index: int):
 
