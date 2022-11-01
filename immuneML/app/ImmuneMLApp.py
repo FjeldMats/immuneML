@@ -37,11 +37,16 @@ class ImmuneMLApp:
         EnvironmentSettings.reset_cache_path()
         del os.environ[Constants.CACHE_TYPE]
 
+    def enable_profiling(self):
+        os.environ["RAY_PROFILING"] = "1"
+
     def run(self):
 
         st = time.time()
 
         self.set_cache()
+
+        self.enable_profiling()
 
         print(f"{datetime.datetime.now()}: ImmuneML: parsing the specification...\n", flush=True)
 
@@ -107,6 +112,7 @@ def main():
     namespace.result_path = Path(namespace.result_path)
 
     run_immuneML(namespace)
+    ray.timeline(filename="timeline.json")
 
 
 if __name__ == "__main__":
